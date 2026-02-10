@@ -1,8 +1,7 @@
-import { promisify } from "node:util";
 import { exec as execCallback } from "node:child_process";
 import { basename } from "node:path";
-import process from "node:process";
-import type { GitInfo, WorktreeResult, WorktreeListResult, GitStatus } from "./types.ts";
+import { promisify } from "node:util";
+import type { GitInfo, GitStatus, WorktreeListResult, WorktreeResult } from "./types.ts";
 
 const exec = promisify(execCallback);
 
@@ -41,19 +40,50 @@ export async function getGitInfo(workDir: string = Deno.cwd()): Promise<GitInfo>
 
 export async function executeGitCommand(workDir: string, command: string): Promise<string> {
   try {
-    const { stdout, stderr } = await exec(command, { 
-      cwd: workDir,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-    });
-    
-    if (stderr && !stdout) {
-      return `Error:\n${stderr}`;
+    // Check if directory exists before using it as cwd
+    let actualWorkDir = workDir;
+    try {
+      await Deno.stat(workDir);
+    } catch {
+      // Directory doesn't exist, use current directory as fallback
+      actualWorkDir = Deno.cwd();
+      console.warn(`Warning: Working directory "${workDir}" does not exist, using "${actualWorkDir}" instead`);
     }
     
-    return stdout || stderr || "Command executed successfully.";
-  // deno-lint-ignore no-explicit-any
-  } catch (error: any) {
-    return `Execution error: ${error.message}\n${error.stderr || ''}`;
+    // Parse command string (e.g., "git worktree list" -> ["git", "worktree", "list"])
+    const parts = command.trim().split(/\s+/);
+    const gitCmd = parts[0]; // Should be "git"
+    const args = parts.slice(1); // Everything after "git"
+    
+    const cmd = new Deno.Command(gitCmd, {
+      args: args,
+      cwd: actualWorkDir,
+      stdout: 'piped',
+      stderr: 'piped',
+      env: {
+        ...Deno.env.toObject(),
+        GIT_TERMINAL_PROMPT: '0'
+      }
+    });
+    
+    const { code, stdout, stderr } = await cmd.output();
+    const stdoutText = new TextDecoder().decode(stdout);
+    const stderrText = new TextDecoder().decode(stderr);
+    
+    if (code !== 0) {
+      // Git commands often write to stderr even on success, so check exit code
+      if (stderrText && !stdoutText) {
+        return `Error:\n${stderrText}`;
+      }
+      // If both stdout and stderr, prefer stdout but include stderr
+      return stdoutText || stderrText || `Command failed with exit code ${code}`;
+    }
+    
+    // Success - return stdout, or stderr if stdout is empty (some git commands write to stderr)
+    return stdoutText || stderrText || "Command executed successfully.";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `Execution error: ${message}`;
   }
 }
 
