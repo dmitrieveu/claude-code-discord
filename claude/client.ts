@@ -34,8 +34,7 @@ export async function sendToClaudeCode(
   controller: AbortController,
   originalSessionId?: string,
   onChunk?: (text: string) => void,
-  // deno-lint-ignore no-explicit-any
-  onStreamJson?: (json: any) => void,
+  onStreamJson?: (json: SDKMessage) => void,
   continueMode?: boolean,
   modelOptions?: ClaudeModelOptions,
 ): Promise<ExecuteResult> {

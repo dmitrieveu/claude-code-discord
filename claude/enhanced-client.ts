@@ -1,6 +1,6 @@
-import { sendToClaudeCode, type ClaudeModelOptions } from "./client.ts";
-import type { ClaudeMessage } from "./types.ts";
+import { SDKMessage } from "@anthropic-ai/claude-code";
 import { recordAPIUsage } from "../util/usage-tracker.ts";
+import { sendToClaudeCode, type ClaudeModelOptions } from "./client.ts";
 
 // Enhanced Claude Code client with additional features
 // NOTE: Temperature and maxTokens are NOT supported by Claude Code CLI
@@ -95,7 +95,7 @@ export async function enhancedClaudeQuery(
   controller: AbortController,
   sessionId?: string,
   onChunk?: (text: string) => void,
-  onStreamJson?: (json: any) => void,
+  onStreamJson?: (json: SDKMessage) => void,
   continueMode?: boolean
 ) {
   let enhancedPrompt = prompt;

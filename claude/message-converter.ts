@@ -1,8 +1,8 @@
+import { SDKMessage } from "@anthropic-ai/claude-code";
 import type { ClaudeMessage } from "./types.ts";
 
 // Convert JSON messages to ClaudeMessage
-// deno-lint-ignore no-explicit-any
-export function convertToClaudeMessages(jsonData: any): ClaudeMessage[] {
+export function convertToClaudeMessages(jsonData: SDKMessage): ClaudeMessage[] {
   const messages: ClaudeMessage[] = [];
   
   if (jsonData.type === 'assistant') {
