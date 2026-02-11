@@ -118,10 +118,55 @@ function formatGenericTool(toolName: string, metadata: any): { title: string; co
   };
 }
 
+// Parse skip message types from environment variable
+// Supports both simple types (e.g., "tool_result") and subtypes (e.g., "system:completion")
+function getSkipMessageTypes(): Set<string> {
+  const skipTypesEnv = Deno.env.get("CLAUDE_SKIP_MESSAGE_TYPES");
+  if (!skipTypesEnv) {
+    return new Set();
+  }
+  
+  // Parse comma-separated list, trim whitespace, and convert to lowercase
+  return new Set(
+    skipTypesEnv
+      .split(',')
+      .map(type => type.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+// Check if a message should be skipped based on type and subtype
+function shouldSkipMessage(msg: ClaudeMessage, skipMessageTypes: Set<string>): boolean {
+  const msgType = msg.type.toLowerCase();
+  
+  // Check for exact type match (e.g., "tool_result")
+  if (skipMessageTypes.has(msgType)) {
+    return true;
+  }
+  
+  // Check for subtype match (e.g., "system:completion")
+  if (msg.metadata?.subtype) {
+    const subtype = msg.metadata.subtype.toLowerCase();
+    const typeSubtypePattern = `${msgType}:${subtype}`;
+    if (skipMessageTypes.has(typeSubtypePattern)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 // Create sendClaudeMessages function with dependency injection
 export function createClaudeSender(sender: DiscordSender) {
+  const skipMessageTypes = getSkipMessageTypes();
+  
   return async function sendClaudeMessages(messages: ClaudeMessage[]) {
   for (const msg of messages) {
+    // Skip messages if their type or type:subtype is in the skip list
+    if (shouldSkipMessage(msg, skipMessageTypes)) {
+      continue;
+    }
+    
     switch (msg.type) {
       case 'text': {
         const chunks = splitText(msg.content, 4000);
