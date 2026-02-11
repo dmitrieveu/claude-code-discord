@@ -126,14 +126,16 @@ export async function sendToClaudeCode(
 
       // Get information from the last message
       const lastMessage = result.messages[result.messages.length - 1];
+      const cost = lastMessage && "total_cost_usd" in lastMessage ? lastMessage.total_cost_usd : undefined;
+      const duration = lastMessage && "duration_ms" in lastMessage ? lastMessage.duration_ms : undefined;
 
       return {
         messages: result.messages,
         aborted: result.aborted,
         response: result.response || "No response received",
         sessionId: result.sessionId,
-        cost: "total_cost_usd" in lastMessage ? lastMessage.total_cost_usd : undefined,
-        duration: "duration_ms" in lastMessage ? lastMessage.duration_ms : undefined,
+        cost,
+        duration,
         modelUsed: result.modelUsed,
       };
     } catch (error: unknown) {
