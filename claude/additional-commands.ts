@@ -1,6 +1,10 @@
 import { SDKMessage } from "@anthropic-ai/claude-code";
 import { SlashCommandBuilder } from "npm:discord.js@14.14.1";
 import type { InteractionContext } from "../discord/index.ts";
+import { ProcessCrashHandler } from "../process/crash-handler.ts";
+import { AdvancedBotSettings } from "../settings/advanced-settings.ts";
+import { ClaudeSessionManager } from "./enhanced-client.ts";
+import { ClaudeMessage } from "./types.ts";
 
 
 export const additionalClaudeCommands = [
@@ -186,14 +190,14 @@ export interface AdditionalClaudeHandlerDeps {
   workDir: string;
   claudeController: AbortController | null;
   setClaudeController: (controller: AbortController | null) => void;
-  sendClaudeMessages: (messages: any[]) => Promise<void>;
-  sessionManager: any;
-  crashHandler: any;
-  settings: any;
+  sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
+  claudeSessionManager: ClaudeSessionManager;
+  crashHandler: ProcessCrashHandler;
+  settings: AdvancedBotSettings;
 }
 
 export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps) {
-  const { workDir, sessionManager, crashHandler, sendClaudeMessages, settings } = deps;
+  const { workDir, crashHandler, sendClaudeMessages, settings } = deps;
 
   const handleClaudeStreamJsonMessage = async (jsonData: SDKMessage) => {
     const { convertToClaudeMessages } = await import("./message-converter.ts");
