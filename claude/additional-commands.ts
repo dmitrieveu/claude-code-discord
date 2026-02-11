@@ -1,5 +1,6 @@
 import { SDKMessage } from "@anthropic-ai/claude-code";
 import { SlashCommandBuilder } from "npm:discord.js@14.14.1";
+import type { InteractionContext } from "../discord/index.ts";
 
 
 export const additionalClaudeCommands = [
@@ -204,7 +205,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
 
   return {
     async onClaudeExplain(
-      ctx: any,
+      ctx: InteractionContext,
       content: string,
       detailLevel?: string,
       includeExamples?: boolean
@@ -249,7 +250,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     },
 
     async onClaudeDebug(
-      ctx: any,
+      ctx: InteractionContext,
       errorOrCode: string,
       language?: string,
       contextFiles?: string
@@ -299,7 +300,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     },
 
     async onClaudeOptimize(
-      ctx: any,
+      ctx: InteractionContext,
       code: string,
       focus?: string,
       preserveFunctionality?: boolean
@@ -348,7 +349,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     },
 
     async onClaudeReview(
-      ctx: any,
+      ctx: InteractionContext,
       codeOrFile: string,
       reviewType?: string,
       includeSecurity?: boolean,
@@ -410,7 +411,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     },
 
     async onClaudeGenerate(
-      ctx: any,
+      ctx: InteractionContext,
       request: string,
       type?: string,
       style?: string
@@ -455,7 +456,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     },
 
     async onClaudeRefactor(
-      ctx: any,
+      ctx: InteractionContext,
       code: string,
       goal?: string,
       preserveBehavior?: boolean,
@@ -509,7 +510,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     },
 
     async onClaudeLearn(
-      ctx: any,
+      ctx: InteractionContext,
       topic: string,
       level?: string,
       includeExercises?: boolean,
