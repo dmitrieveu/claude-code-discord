@@ -1,7 +1,13 @@
 import { exec as execCallback } from "node:child_process";
-import { basename, resolve } from "node:path";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 import type { GitInfo, GitStatus, WorktreeListResult, WorktreeResult } from "./types.ts";
+import { 
+  isBareRepository, 
+  findWorktreeForBareRepo, 
+  resolveBaseRepoDir,
+  findWorktreeForBranch
+} from "./repo-helpers.ts";
 
 const exec = promisify(execCallback);
 
@@ -50,6 +56,26 @@ export async function executeGitCommand(workDir: string, command: string): Promi
       console.warn(`Warning: Working directory "${workDir}" does not exist, using "${actualWorkDir}" instead`);
     }
     
+    // For bare repos, check if we should use a worktree directory instead
+    // Skip this check for worktree-related commands to avoid recursion
+    const isWorktreeCommand = command.includes('worktree') || command.includes('rev-parse --git-dir') || command.includes('rev-parse --is-bare-repository');
+    if (!isWorktreeCommand) {
+      try {
+        // Check if this is a bare repository and find appropriate worktree
+        const isBare = await isBareRepository(actualWorkDir);
+        if (isBare) {
+          const worktreeDir = await findWorktreeForBareRepo(actualWorkDir);
+          if (worktreeDir) {
+            actualWorkDir = worktreeDir;
+            console.log(`[executeGitCommand] Using worktree directory for bare repo: ${actualWorkDir}`);
+          }
+        }
+      } catch (error) {
+        // If bare repo detection fails, continue with original directory
+        console.warn(`[executeGitCommand] Bare repo detection failed: ${error}`);
+      }
+    }
+    
     // Parse command string (e.g., "git worktree list" -> ["git", "worktree", "list"])
     const parts = command.trim().split(/\s+/);
     const gitCmd = parts[0]; // Should be "git"
@@ -88,43 +114,25 @@ export async function executeGitCommand(workDir: string, command: string): Promi
 }
 
 export async function createWorktree(workDir: string, branch: string, ref?: string): Promise<WorktreeResult> {
-  let baseWorkDir = workDir;
-
   // Resolve main repo path (bare repo or .git dir) - worktrees point inside main repo
-  const gitDirResult = await executeGitCommand(workDir, "git rev-parse --git-dir");
-  if (!gitDirResult.startsWith("Execution error:") && !gitDirResult.startsWith("Error:") && !gitDirResult.includes("Command failed")) {
-    const gitDir = resolve(workDir, gitDirResult.trim());
-    if (gitDir.includes("/worktrees/")) {
-      baseWorkDir = gitDir.split("/worktrees/")[0];
-      console.log(`[createWorktree] workDir=${workDir} gitDir=${gitDir} -> baseWorkDir=${baseWorkDir}`);
-    }
-  }
+  const baseWorkDir = await resolveBaseRepoDir(workDir);
+  console.log(`[createWorktree] workDir=${workDir} -> baseWorkDir=${baseWorkDir}`);
 
   // Check if worktree already exists for this branch
-  const existingWorktrees = await executeGitCommand(baseWorkDir, "git worktree list");
-  if (!existingWorktrees.startsWith('Execution error:') && !existingWorktrees.startsWith('Error:')) {
-    const worktreeLines = existingWorktrees.split('\n').filter(line => line.trim());
-    for (const line of worktreeLines) {
-      // Check if this branch is already used by a worktree
-      if (line.includes(`[${branch}]`) || line.endsWith(` ${branch}`)) {
-        const existingPath = line.split(/\s+/)[0];
-        return { 
-          result: `Found existing worktree. Path: ${existingPath}`, 
-          fullPath: existingPath, 
-          baseDir: baseWorkDir,
-          isExisting: true
-        };
-      }
-    }
+  const existingWorktree = await findWorktreeForBranch(baseWorkDir, branch);
+  if (existingWorktree) {
+    return { 
+      result: `Found existing worktree. Path: ${existingWorktree}`, 
+      fullPath: existingWorktree, 
+      baseDir: baseWorkDir,
+      isExisting: true
+    };
   }
 
   // Bare repos: worktrees go inside the repo. Non-bare: worktrees go as siblings (default).
-  // GIT_BARE_REPO=true overrides when path doesn't exist in container (e.g. Docker) so git can't detect
-  const envBareOverride = Deno.env.get("GIT_BARE_REPO")?.toLowerCase() === "true";
-  const isBareResult = envBareOverride ? "true" : (await executeGitCommand(baseWorkDir, "git rev-parse --is-bare-repository")).trim();
-  const isBare = isBareResult.toLowerCase() === "true";
+  const isBare = await isBareRepository(baseWorkDir);
   const worktreeDir = isBare ? `${baseWorkDir}/${branch}` : `${baseWorkDir}/../${branch}`;
-  console.log(`[createWorktree] baseWorkDir=${baseWorkDir} isBare=${isBare} (envOverride=${envBareOverride}) worktreeDir=${worktreeDir}`);
+  console.log(`[createWorktree] baseWorkDir=${baseWorkDir} isBare=${isBare} worktreeDir=${worktreeDir}`);
   
   // Check if directory already exists
   try {
@@ -162,48 +170,16 @@ export async function createWorktree(workDir: string, branch: string, ref?: stri
 }
 
 export async function listWorktrees(workDir: string): Promise<WorktreeListResult> {
-  let baseWorkDir = workDir;
-  
-  try {
-    const gitFile = await Deno.readTextFile(`${workDir}/.git`);
-    if (gitFile.includes('gitdir:')) {
-      baseWorkDir = workDir.replace(/\/\.git\/worktrees\/[^\/]+$/, '');
-    }
-  } catch {
-    // For .git directory, this is a normal repository
-  }
-  
+  const baseWorkDir = await resolveBaseRepoDir(workDir);
   const result = await executeGitCommand(baseWorkDir, "git worktree list");
   return { result, baseDir: baseWorkDir };
 }
 
 export async function removeWorktree(workDir: string, branch: string): Promise<WorktreeResult> {
-  let baseWorkDir = workDir;
+  const baseWorkDir = await resolveBaseRepoDir(workDir);
   
-  try {
-    const gitFile = await Deno.readTextFile(`${workDir}/.git`);
-    if (gitFile.includes('gitdir:')) {
-      baseWorkDir = workDir.replace(/\/\.git\/worktrees\/[^\/]+$/, '');
-    }
-  } catch {
-    // For .git directory, this is a normal repository
-  }
-  
-  // First, find the actual worktree path by listing existing worktrees
-  const worktreeList = await executeGitCommand(baseWorkDir, "git worktree list");
-  if (worktreeList.startsWith('Execution error:') || worktreeList.startsWith('Error:')) {
-    return { result: worktreeList, fullPath: '', baseDir: baseWorkDir };
-  }
-  
-  let worktreePathToRemove = '';
-  const worktreeLines = worktreeList.split('\n').filter(line => line.trim());
-  for (const line of worktreeLines) {
-    // Check if this line contains the branch we want to remove
-    if (line.includes(`[${branch}]`) || line.endsWith(` ${branch}`)) {
-      worktreePathToRemove = line.split(/\s+/)[0];
-      break;
-    }
-  }
+  // Find the worktree path for this branch
+  const worktreePathToRemove = await findWorktreeForBranch(baseWorkDir, branch);
   
   if (!worktreePathToRemove) {
     return { 
@@ -278,7 +254,7 @@ export async function getGitStatus(workDir: string): Promise<GitStatus> {
       branch: cleanBranch, 
       remote: formattedRemote 
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       status: "Error getting git status",
       branch: "unknown", 
