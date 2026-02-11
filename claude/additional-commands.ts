@@ -1,5 +1,6 @@
+import { SDKMessage } from "@anthropic-ai/claude-code";
 import { SlashCommandBuilder } from "npm:discord.js@14.14.1";
-import { CLAUDE_MODELS, CLAUDE_TEMPLATES } from "./enhanced-client.ts";
+
 
 export const additionalClaudeCommands = [
   new SlashCommandBuilder()
@@ -193,6 +194,14 @@ export interface AdditionalClaudeHandlerDeps {
 export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps) {
   const { workDir, sessionManager, crashHandler, sendClaudeMessages, settings } = deps;
 
+  const handleClaudeStreamJsonMessage = async (jsonData: SDKMessage) => {
+    const { convertToClaudeMessages } = await import("./message-converter.ts");
+    const claudeMessages = convertToClaudeMessages(jsonData);
+    if (claudeMessages.length > 0) {
+      sendClaudeMessages(claudeMessages).catch(() => {});
+    }
+  }
+
   return {
     async onClaudeExplain(
       ctx: any,
@@ -227,13 +236,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
@@ -283,13 +286,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
@@ -338,13 +335,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
@@ -406,13 +397,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
@@ -457,13 +442,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
@@ -517,13 +496,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
@@ -573,13 +546,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
           controller,
           undefined,
           undefined,
-          async (jsonData) => {
-            const { convertToClaudeMessages } = await import("./message-converter.ts");
-            const claudeMessages = convertToClaudeMessages(jsonData);
-            if (claudeMessages.length > 0) {
-              sendClaudeMessages(claudeMessages).catch(() => {});
-            }
-          },
+          handleClaudeStreamJsonMessage,
           false
         );
 
