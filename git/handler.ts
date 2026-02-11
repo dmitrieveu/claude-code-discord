@@ -1,5 +1,5 @@
 import { exec as execCallback } from "node:child_process";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { GitInfo, GitStatus, WorktreeListResult, WorktreeResult } from "./types.ts";
 
@@ -88,18 +88,18 @@ export async function executeGitCommand(workDir: string, command: string): Promi
 }
 
 export async function createWorktree(workDir: string, branch: string, ref?: string): Promise<WorktreeResult> {
-  const actualRef = ref || branch;
   let baseWorkDir = workDir;
-  
-  try {
-    const gitFile = await Deno.readTextFile(`${workDir}/.git`);
-    if (gitFile.includes('gitdir:')) {
-      baseWorkDir = workDir.replace(/\/\.git\/worktrees\/[^\/]+$/, '');
+
+  // Resolve main repo path (bare repo or .git dir) - worktrees point inside main repo
+  const gitDirResult = await executeGitCommand(workDir, "git rev-parse --git-dir");
+  if (!gitDirResult.startsWith("Execution error:") && !gitDirResult.startsWith("Error:") && !gitDirResult.includes("Command failed")) {
+    const gitDir = resolve(workDir, gitDirResult.trim());
+    if (gitDir.includes("/worktrees/")) {
+      baseWorkDir = gitDir.split("/worktrees/")[0];
+      console.log(`[createWorktree] workDir=${workDir} gitDir=${gitDir} -> baseWorkDir=${baseWorkDir}`);
     }
-  } catch {
-    // For .git directory, this is a normal repository
   }
-  
+
   // Check if worktree already exists for this branch
   const existingWorktrees = await executeGitCommand(baseWorkDir, "git worktree list");
   if (!existingWorktrees.startsWith('Execution error:') && !existingWorktrees.startsWith('Error:')) {
@@ -117,9 +117,14 @@ export async function createWorktree(workDir: string, branch: string, ref?: stri
       }
     }
   }
-  
-  // The actual worktree directory path (not the .git/worktrees path)
-  const worktreeDir = `${baseWorkDir}/../${branch}`;
+
+  // Bare repos: worktrees go inside the repo. Non-bare: worktrees go as siblings (default).
+  // GIT_BARE_REPO=true overrides when path doesn't exist in container (e.g. Docker) so git can't detect
+  const envBareOverride = Deno.env.get("GIT_BARE_REPO")?.toLowerCase() === "true";
+  const isBareResult = envBareOverride ? "true" : (await executeGitCommand(baseWorkDir, "git rev-parse --is-bare-repository")).trim();
+  const isBare = isBareResult.toLowerCase() === "true";
+  const worktreeDir = isBare ? `${baseWorkDir}/${branch}` : `${baseWorkDir}/../${branch}`;
+  console.log(`[createWorktree] baseWorkDir=${baseWorkDir} isBare=${isBare} (envOverride=${envBareOverride}) worktreeDir=${worktreeDir}`);
   
   // Check if directory already exists
   try {
@@ -133,17 +138,24 @@ export async function createWorktree(workDir: string, branch: string, ref?: stri
     // Directory doesn't exist, which is good
   }
   
-  // Check if branch already exists
+  // Check if branch already exists (show-ref exits 1 when ref doesn't exist, returning "Command failed...")
   const branchCheckResult = await executeGitCommand(baseWorkDir, `git show-ref --verify --quiet refs/heads/${branch}`);
-  const branchExists = !branchCheckResult.startsWith('Execution error:') && !branchCheckResult.startsWith('Error:');
-  
+  const isCheckError = branchCheckResult.startsWith('Execution error:') ||
+    branchCheckResult.startsWith('Error:') ||
+    branchCheckResult.includes('Command failed');
+  const branchExists = !isCheckError;
+  if (!branchExists) {
+    console.log(`[createWorktree] Branch check for '${branch}': not found (${branchCheckResult.slice(0, 80)})`);
+  }
+
   let result: string;
   if (branchExists) {
-    // Branch exists, use it without creating a new one
+    console.log(`[createWorktree] Branch '${branch}' exists, adding worktree at ${worktreeDir}`);
     result = await executeGitCommand(baseWorkDir, `git worktree add ${worktreeDir} ${branch}`);
   } else {
-    // Branch doesn't exist, create a new one
-    result = await executeGitCommand(baseWorkDir, `git worktree add ${worktreeDir} -b ${branch} ${actualRef}`);
+    const startPoint = ref || "HEAD";
+    console.log(`[createWorktree] Branch '${branch}' does not exist, creating from ${startPoint} at ${worktreeDir}`);
+    result = await executeGitCommand(baseWorkDir, `git worktree add ${worktreeDir} -b ${branch} ${startPoint}`);
   }
   
   return { result, fullPath: worktreeDir, baseDir: baseWorkDir };

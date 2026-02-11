@@ -21,9 +21,8 @@ services:
     volumes:
       # Persist bot data (todos, sessions, etc.)
       - bot-data:/app/.bot-data
-      # Optional: Mount your local workspace for Claude to work on
-      # Uncomment and modify path as needed:
-      # - /path/to/your/project:/app/workspace
+      # Mount WORK_DIR from .env so the bot can access your repo (e.g. bare git repo for worktrees)
+      - ${WORK_DIR:-/app/workspace}:${WORK_DIR:-/app/workspace}:rw
     
     # Resource limits (adjust based on your needs)
     deploy:
