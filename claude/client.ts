@@ -32,7 +32,7 @@ export async function sendToClaudeCode(
   workDir: string,
   prompt: string,
   controller: AbortController,
-  sessionId?: string,
+  originalSessionId?: string,
   onChunk?: (text: string) => void,
   // deno-lint-ignore no-explicit-any
   onStreamJson?: (json: any) => void,
@@ -40,19 +40,22 @@ export async function sendToClaudeCode(
   modelOptions?: ClaudeModelOptions,
 ): Promise<ExecuteResult> {
   // Clean up session ID
-  const cleanedSessionId = sessionId ? cleanSessionId(sessionId) : undefined;
+  const cleanedSessionId = originalSessionId ? cleanSessionId(originalSessionId) : undefined;
 
   const execute = async (modelToUse?: string): Promise<ExecuteResult> => {
     const modelUsed = modelToUse || "Default";
 
-    const queryOptions = {
+    const queryOptions: Parameters<typeof claudeQuery>[0] = {
       prompt,
-      abortController: controller,
       options: {
         cwd: workDir,
+        abortController: controller,
+        stderr: (data) => {
+          console.log("stderr: ", data);
+        },
+        executable: "deno",
+        executableArgs: ["--allow-all", "--no-lock"],
         permissionMode: "bypassPermissions" as const,
-        verbose: true,
-        outputFormat: "stream-json",
         ...(continueMode && { continue: true }),
         ...(cleanedSessionId && !continueMode && { resume: cleanedSessionId }),
         ...(modelToUse && { model: modelToUse }),
@@ -126,8 +129,12 @@ export async function sendToClaudeCode(
 
       // Get information from the last message
       const lastMessage = result.messages[result.messages.length - 1];
-      const cost = lastMessage && "total_cost_usd" in lastMessage ? lastMessage.total_cost_usd : undefined;
-      const duration = lastMessage && "duration_ms" in lastMessage ? lastMessage.duration_ms : undefined;
+      const cost = lastMessage && "total_cost_usd" in lastMessage
+        ? lastMessage.total_cost_usd
+        : undefined;
+      const duration = lastMessage && "duration_ms" in lastMessage
+        ? lastMessage.duration_ms
+        : undefined;
 
       return {
         messages: result.messages,
@@ -189,7 +196,7 @@ export async function sendToClaudeCode(
         return {
           messages: [],
           response: "Request was cancelled",
-          sessionId: undefined,
+          sessionId: originalSessionId,
           aborted: true,
           modelUsed: "Claude Sonnet 4",
         };
