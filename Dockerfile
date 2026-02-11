@@ -9,9 +9,9 @@ WORKDIR /app
 # Set environment variable to indicate Docker container
 ENV DOCKER_CONTAINER=true
 
-# Install git (required for branch tracking features)
+# Install git (required for branch tracking features) and node (required for claude)
 USER root
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git nodejs && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
 RUN groupadd -r claude && useradd -r -g claude claude
