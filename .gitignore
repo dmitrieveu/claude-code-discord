@@ -6,10 +6,14 @@
 # Plan files (development only)
 plan/
 
+# Claude
+.claude/settings.local.json
+
 # IDE and editors
 .idea/
 .vscode/
 .github/
+CLAUDE.md
 
 # Dependencies
 node_modules/
