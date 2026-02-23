@@ -35,6 +35,10 @@ export interface CommandWrapperDeps {
   botSettings: { mentionEnabled: boolean; mentionUserId: string | null };
   /** Cleanup interval ID */
   cleanupInterval: number;
+  /** Get Discord client (available after bot creation) */
+  getDiscordClient: () => import("npm:discord.js@14.14.1").Client | null;
+  /** Category name for this bot's channels */
+  categoryName: string;
 }
 
 // ================================
@@ -295,11 +299,26 @@ export function createClaudeCommandHandlers(
         }
       }
     }],
+    ['claude-plan', {
+      execute: async (ctx: InteractionContext) => {
+        const prompt = ctx.getString('prompt', true)!;
+        const sessionId = ctx.getString('session_id');
+        addToHistory(prompt);
+        await claudeHandlers.onClaudePlan(ctx, prompt, sessionId || undefined);
+      }
+    }],
     ['continue', {
       execute: async (ctx: InteractionContext) => {
         const prompt = ctx.getString('prompt');
         if (prompt) addToHistory(prompt);
         await claudeHandlers.onContinue(ctx, prompt || undefined);
+      }
+    }],
+    ['continue-plan', {
+      execute: async (ctx: InteractionContext) => {
+        const prompt = ctx.getString('prompt');
+        if (prompt) addToHistory(prompt);
+        await claudeHandlers.onContinuePlan(ctx, prompt || undefined);
       }
     }],
     ['claude-cancel', {
@@ -531,7 +550,7 @@ export interface CompleteCommandWrapperDeps extends CommandWrapperDeps {
  * This significantly reduces code in index.ts by consolidating handler creation.
  */
 export function createAllCommandHandlers(deps: CommandWrapperDeps): CommandHandlers {
-  const { handlers, messageHistory, getClaudeController, crashHandler, healthMonitor, botSettings, cleanupInterval } = deps;
+  const { handlers, messageHistory, getClaudeController, crashHandler, healthMonitor, botSettings, cleanupInterval, getDiscordClient, categoryName } = deps;
 
   // Get handlers from individual factories
   const systemHandlers = createSystemCommandHandlers(handlers, crashHandler);
@@ -548,6 +567,8 @@ export function createAllCommandHandlers(deps: CommandWrapperDeps): CommandHandl
     getClaudeController,
     cleanupInterval,
     botSettings,
+    getDiscordClient,
+    categoryName,
   };
 
   const gitHandlers = createGitCommandHandlers(gitShellDeps);

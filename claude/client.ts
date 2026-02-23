@@ -37,6 +37,7 @@ export async function sendToClaudeCode(
   onStreamJson?: (json: SDKMessage) => void,
   continueMode?: boolean,
   modelOptions?: ClaudeModelOptions,
+  permissionMode?: "bypassPermissions" | "plan",
 ): Promise<ExecuteResult> {
   // Clean up session ID
   const cleanedSessionId = originalSessionId ? cleanSessionId(originalSessionId) : undefined;
@@ -54,7 +55,7 @@ export async function sendToClaudeCode(
         },
         executable: "deno",
         executableArgs: ["--allow-all", "--no-lock"],
-        permissionMode: "bypassPermissions" as const,
+        permissionMode: permissionMode ?? "bypassPermissions",
         ...(continueMode && { continue: true }),
         ...(cleanedSessionId && !continueMode && { resume: cleanedSessionId }),
         ...(modelToUse && { model: modelToUse }),
