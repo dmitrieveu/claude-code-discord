@@ -5,8 +5,11 @@
  * @module core/git-shell-handlers
  */
 
+import { ChannelType } from "npm:discord.js@14.14.1";
+import type { Client } from "npm:discord.js@14.14.1";
 import type { CommandHandlers, InteractionContext } from "../discord/index.ts";
 import { formatShellOutput, formatGitOutput, formatError, createFormattedEmbed, cleanupPaginationStates } from "../discord/index.ts";
+import { sanitizeChannelName } from "../discord/utils.ts";
 import type { AllHandlers } from "./handler-registry.ts";
 import type { ProcessCrashHandler, ProcessHealthMonitor } from "../process/index.ts";
 
@@ -30,6 +33,10 @@ export interface GitShellHandlerDeps {
   cleanupInterval: number;
   /** Bot settings */
   botSettings: { mentionEnabled: boolean; mentionUserId: string | null };
+  /** Get Discord client (available after bot creation) */
+  getDiscordClient: () => Client | null;
+  /** Category name for this bot's channels */
+  categoryName: string;
 }
 
 // ================================
@@ -182,15 +189,73 @@ export function createGitCommandHandlers(
         await ctx.deferReply();
         const branch = ctx.getString('branch', true)!;
         try {
-          await gitHandlers.onWorktreeRemove(ctx, branch);
-          await ctx.editReply({
-            embeds: [{
-              color: 0x00ff00,
-              title: 'Worktree Removal Successful',
-              fields: [{ name: 'Branch', value: branch, inline: true }],
-              timestamp: true
-            }]
-          });
+          const result = await gitHandlers.onWorktreeRemove(ctx, branch);
+          const isError = result.result.startsWith('Error:') || result.result.startsWith('Execution error:') || result.result.includes('fatal:');
+
+          // Kill the worktree bot if one is running for this path
+          let botKilled = false;
+          if (!isError && result.fullPath) {
+            const killResult = gitHandlers.onWorktreeKill(ctx, result.fullPath);
+            botKilled = killResult.success;
+          }
+
+          if (isError) {
+            await ctx.editReply({
+              embeds: [{
+                color: 0xff0000,
+                title: 'Worktree Removal Error',
+                fields: [
+                  { name: 'Branch', value: branch, inline: true },
+                  { name: 'Error', value: `\`\`\`\n${result.result}\n\`\`\``, inline: false }
+                ],
+                timestamp: true
+              }]
+            });
+          } else {
+            // Reply before deleting the channel, since the reply lives in the current channel
+            await ctx.editReply({
+              embeds: [{
+                color: 0x00ff00,
+                title: 'Worktree Removal Successful',
+                fields: [
+                  { name: 'Branch', value: branch, inline: true },
+                  ...(botKilled ? [{ name: 'Bot', value: 'Worktree bot stopped', inline: true }] : []),
+                ],
+                timestamp: true
+              }]
+            });
+
+            // Delete the Discord channel for this worktree after replying
+            try {
+              const client = deps.getDiscordClient();
+              if (client) {
+                const channelName = sanitizeChannelName(branch);
+                const guild = client.guilds.cache.first();
+                if (guild) {
+                  const category = guild.channels.cache.find(
+                    (c) =>
+                      c.type === ChannelType.GuildCategory &&
+                      c.name === deps.categoryName,
+                  );
+                  if (category) {
+                    const channel = guild.channels.cache.find(
+                      (c) =>
+                        c.type === ChannelType.GuildText &&
+                        c.name === channelName &&
+                        c.parentId === category.id,
+                    );
+                    if (channel) {
+                      await channel.delete(
+                        `Worktree for branch "${branch}" removed`,
+                      );
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error(`Failed to delete worktree channel for branch "${branch}":`, err);
+            }
+          }
         } catch (error) {
           await ctx.editReply({
             embeds: [{

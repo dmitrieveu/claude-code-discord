@@ -1,6 +1,8 @@
 // Worktree bot process management
 import { killProcessCrossPlatform } from "../util/process.ts";
 import type { BotSettings } from "../types/shared.ts";
+import { getWorktreeListDetailed } from "./repo-helpers.ts";
+import { resolve } from "node:path";
 
 export interface WorktreeBotProcess {
   process: Deno.ChildProcess;
@@ -44,6 +46,8 @@ export class WorktreeBotManager {
         ...Deno.env.toObject(),
         DISCORD_TOKEN: discordToken,
         APPLICATION_ID: applicationId,
+        WORK_DIR: "", // Clear so child uses its own cwd
+        WORKTREE_BOT: "true", // Prevent child from respawning other worktrees
       },
       stdout: "inherit",
       stderr: "inherit",
@@ -145,6 +149,74 @@ export class WorktreeBotManager {
       totalBots: this.spawnedBots.size,
       bots,
     };
+  }
+
+  /**
+   * Re-spawn bots for all existing worktrees that aren't the main working directory.
+   * Called on startup to restore worktree bots after a restart.
+   */
+  async respawnExistingWorktrees(config: {
+    mainWorkDir: string;
+    actualCategoryName: string;
+    discordToken: string;
+    applicationId: string;
+    botSettings: BotSettings;
+  }): Promise<number> {
+    // Child worktree bots must not respawn other worktrees (prevents cascade)
+    if (Deno.env.get("WORKTREE_BOT") === "true") {
+      return 0;
+    }
+
+    const { mainWorkDir, actualCategoryName, discordToken, applicationId, botSettings } = config;
+    const resolvedMainWorkDir = resolve(mainWorkDir);
+
+    let worktrees;
+    try {
+      worktrees = await getWorktreeListDetailed(resolvedMainWorkDir);
+    } catch (error) {
+      console.warn(
+        `Failed to list worktrees for respawn: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 0;
+    }
+
+    // Filter to only non-main, non-bare worktrees
+    const toSpawn = worktrees.filter(
+      (wt) => resolve(wt.path) !== resolvedMainWorkDir && !wt.isBare,
+    );
+
+    if (toSpawn.length === 0) {
+      return 0;
+    }
+
+    // Spawn all worktree bots in parallel to avoid blocking startup
+    const results = await Promise.allSettled(
+      toSpawn.map((wt) => {
+        const branch = wt.branch || wt.path.split("/").pop() || "unknown";
+        return this.spawnWorktreeBot({
+          fullPath: wt.path,
+          branch,
+          actualCategoryName,
+          discordToken,
+          applicationId,
+          botSettings,
+        });
+      }),
+    );
+
+    let spawned = 0;
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === "fulfilled") {
+        spawned++;
+      } else {
+        console.warn(
+          `Failed to respawn worktree bot for ${toSpawn[i].path}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+        );
+      }
+    }
+
+    return spawned;
   }
 
   private formatUptime(milliseconds: number): string {

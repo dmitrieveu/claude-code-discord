@@ -94,6 +94,60 @@ export async function isBareRepository(repoDir: string): Promise<boolean> {
   return false;
 }
 
+export interface WorktreeInfo {
+  path: string;
+  branch: string | null;
+  isBare: boolean;
+}
+
+/**
+ * Get detailed list of worktrees for a repository using porcelain format.
+ * Returns array of objects with path and branch for each worktree.
+ */
+export async function getWorktreeListDetailed(baseRepoDir: string): Promise<WorktreeInfo[]> {
+  try {
+    const cmd = new Deno.Command("git", {
+      args: ["worktree", "list", "--porcelain"],
+      cwd: baseRepoDir,
+      stdout: "piped",
+      stderr: "piped",
+      env: { ...Deno.env.toObject(), GIT_TERMINAL_PROMPT: "0" },
+    });
+    const { code, stdout } = await cmd.output();
+    if (code === 0) {
+      const output = new TextDecoder().decode(stdout);
+      const worktrees: WorktreeInfo[] = [];
+      // Porcelain format: blocks separated by blank lines
+      // Each block has: worktree <path>\nHEAD <sha>\nbranch <ref>\n
+      const blocks = output.split("\n\n").filter((b) => b.trim());
+      for (const block of blocks) {
+        const lines = block.split("\n");
+        let path = "";
+        let branch: string | null = null;
+        let isBare = false;
+        for (const line of lines) {
+          if (line.startsWith("worktree ")) {
+            path = line.substring("worktree ".length);
+          } else if (line.startsWith("branch ")) {
+            // branch refs/heads/feature-name -> feature-name
+            const ref = line.substring("branch ".length);
+            branch = ref.replace(/^refs\/heads\//, "");
+          } else if (line === "bare") {
+            isBare = true;
+          }
+        }
+        if (path) {
+          worktrees.push({ path, branch, isBare });
+        }
+      }
+      return worktrees;
+    }
+  } catch {
+    // If command fails, return empty array
+  }
+  return [];
+}
+
 /**
  * Get list of worktrees for a repository.
  * Returns array of worktree paths.
