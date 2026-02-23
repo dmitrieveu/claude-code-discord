@@ -197,8 +197,15 @@ export function createAgentHandlers(deps: AgentHandlerDeps) {
       includeSystemInfo?: boolean
     ) {
       try {
-        deps.resetProgress?.(message || action);
         await ctx.deferReply();
+        const promptText = message || action;
+        const preview = (promptText || "").length > 200
+          ? (promptText || "").substring(0, 200) + "..."
+          : (promptText || "");
+        const msgId = await ctx.editReply({ content: `Agent: ${preview}` }).catch(
+          () => undefined,
+        );
+        deps.resetProgress?.(promptText, msgId);
 
         switch (action) {
           case 'list':

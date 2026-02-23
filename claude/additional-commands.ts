@@ -208,6 +208,19 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     }
   };
 
+  // Helper: defer interaction, edit reply with prompt preview, and pass message ID to resetProgress
+  async function deferAndInitProgress(
+    ctx: InteractionContext,
+    promptText: string,
+    cmdPreview: string,
+  ): Promise<void> {
+    await ctx.deferReply();
+    const msgId = await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(
+      () => undefined,
+    );
+    deps.resetProgress?.(promptText, msgId);
+  }
+
   return {
     async onClaudeExplain(
       ctx: InteractionContext,
@@ -217,8 +230,7 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = content.length > 200 ? content.substring(0, 200) + "..." : content;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(content);
+        await deferAndInitProgress(ctx, content, cmdPreview);
 
         let prompt = `Please explain the following in ${detailLevel || 'detailed'} terms`;
 
@@ -249,10 +261,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'explain', 'Claude explain command');
         throw error;
       }
@@ -266,24 +276,23 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = errorOrCode.length > 200 ? errorOrCode.substring(0, 200) + "..." : errorOrCode;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(errorOrCode);
+        await deferAndInitProgress(ctx, errorOrCode, cmdPreview);
 
         let prompt = `Please help me debug this ${language ? `${language} ` : ''}issue:\n\n${errorOrCode}`;
-        
+
         if (contextFiles) {
           prompt += `\n\nRelated files: ${contextFiles}`;
         }
-        
+
         prompt += '\n\nPlease provide:\n1. Root cause analysis\n2. Step-by-step solution\n3. Prevention tips\n4. Code examples if applicable';
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
-        const contextFilesList = contextFiles ? 
-          contextFiles.split(',').map(f => f.trim()).filter(f => f.length > 0) : 
+        const contextFilesList = contextFiles ?
+          contextFiles.split(',').map(f => f.trim()).filter(f => f.length > 0) :
           undefined;
 
         const result = await enhancedClaudeQuery(
@@ -303,10 +312,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'debug', 'Claude debug command');
         throw error;
       }
@@ -320,23 +327,22 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = code.length > 200 ? code.substring(0, 200) + "..." : code;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(code);
+        await deferAndInitProgress(ctx, code, cmdPreview);
 
         let prompt = `Please optimize this code`;
-        
+
         if (focus) {
           prompt += ` with focus on ${focus}`;
         }
-        
+
         if (preserveFunctionality !== false) {
           prompt += `, ensuring functionality remains exactly the same`;
         }
-        
+
         prompt += `:\n\n${code}\n\nPlease provide:\n1. Optimized version\n2. Explanation of changes\n3. Performance impact\n4. Any trade-offs`;
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
@@ -356,10 +362,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'optimize', 'Claude optimize command');
         throw error;
       }
@@ -374,30 +378,29 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = codeOrFile.length > 200 ? codeOrFile.substring(0, 200) + "..." : codeOrFile;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(codeOrFile);
+        await deferAndInitProgress(ctx, codeOrFile, cmdPreview);
 
         let prompt = `Please perform a ${reviewType || 'standard'} code review of:\n\n${codeOrFile}\n\nPlease analyze:`;
-        
+
         const analysisPoints = [
           '• Code quality and maintainability',
           '• Best practices adherence',
           '• Potential bugs and issues',
           '• Code structure and organization'
         ];
-        
+
         if (includeSecurity) {
           analysisPoints.push('• Security vulnerabilities');
         }
-        
+
         if (includePerformance) {
           analysisPoints.push('• Performance optimizations');
         }
-        
+
         prompt += `\n${analysisPoints.join('\n')}\n\nProvide specific recommendations with examples where applicable.`;
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
@@ -422,10 +425,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'review', 'Claude review command');
         throw error;
       }
@@ -439,19 +440,18 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = request.length > 200 ? request.substring(0, 200) + "..." : request;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(request);
+        await deferAndInitProgress(ctx, request, cmdPreview);
 
         let prompt = `Please generate ${type ? `a ${type}` : 'code'} based on this request: ${request}`;
-        
+
         if (style) {
           prompt += `\n\nPlease use ${style} programming style and follow best practices for that approach.`;
         }
-        
+
         prompt += '\n\nPlease include:\n• Well-commented code\n• Error handling where appropriate\n• Type annotations (if applicable)\n• Brief explanation of the implementation';
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
@@ -471,10 +471,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'generate', 'Claude generate command');
         throw error;
       }
@@ -489,27 +487,26 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = code.length > 200 ? code.substring(0, 200) + "..." : code;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(code);
+        await deferAndInitProgress(ctx, code, cmdPreview);
 
         let prompt = `Please refactor this code`;
-        
+
         if (goal) {
           prompt += ` to ${goal}`;
         }
-        
+
         if (preserveBehavior !== false) {
           prompt += `, while preserving the exact behavior`;
         }
-        
+
         prompt += `:\n\n${code}\n\nPlease provide:\n• Refactored code with explanations\n• Summary of changes made\n• Benefits of the refactoring`;
-        
+
         if (addTests) {
           prompt += '\n• Unit tests for the refactored code';
         }
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
@@ -529,10 +526,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'refactor', 'Claude refactor command');
         throw error;
       }
@@ -547,23 +542,22 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     ) {
       const cmdPreview = topic.length > 200 ? topic.substring(0, 200) + "..." : topic;
       try {
-        await ctx.deferReply();
-        deps.resetProgress?.(topic);
+        await deferAndInitProgress(ctx, topic, cmdPreview);
 
         let prompt = `Please teach me about "${topic}" at ${level || 'intermediate'} level.`;
-        
+
         if (stepByStep) {
           prompt += ' Break it down into easy-to-follow steps.';
         }
-        
+
         prompt += '\n\nPlease include:\n• Clear explanations with examples\n• Key concepts and terminology\n• Common use cases and applications\n• Best practices and tips';
-        
+
         if (includeExercises) {
           prompt += '\n• Practical exercises to reinforce learning';
         }
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
@@ -583,10 +577,8 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
-        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'learn', 'Claude learn command');
         throw error;
       }

@@ -124,9 +124,13 @@ export function createEnhancedClaudeHandlers(deps: EnhancedClaudeHandlerDeps) {
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
-        // Defer interaction — "thinking..." stays visible while Claude works
+        // Defer interaction and set up progress tracking on the deferred reply
         await ctx.deferReply();
-        deps.resetProgress?.(prompt);
+        const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
+        const msgId = await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(
+          () => undefined,
+        );
+        deps.resetProgress?.(prompt, msgId);
 
         // Apply template if specified
         let enhancedPrompt = prompt;
@@ -167,9 +171,7 @@ export function createEnhancedClaudeHandlers(deps: EnhancedClaudeHandlerDeps) {
         deps.setClaudeSessionId(result.sessionId);
         deps.setClaudeController(null);
 
-        // Remove "thinking..." and send completion message
-        const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
-        await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
+        // Send completion message
         if (result.sessionId) {
           sessionManager.updateSession(result.sessionId, result.cost);
 

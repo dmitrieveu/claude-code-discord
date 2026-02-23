@@ -61,7 +61,30 @@ export interface ClaudeHandlerDeps {
 
 export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
   const { workDir, sendClaudeMessages } = deps;
-  
+
+  // Helper: defer the interaction, edit it with a prompt preview, and pass the message ID
+  // to resetProgress so the progress embed reuses this message instead of creating a new one.
+  // deno-lint-ignore no-explicit-any
+  async function deferAndInitProgress(ctx: any, prompt: string, label = "Command"): Promise<boolean> {
+    let interactionValid = true;
+    try {
+      await ctx.deferReply();
+    } catch {
+      console.warn("Failed to defer reply, interaction may have expired");
+      interactionValid = false;
+    }
+    if (interactionValid) {
+      const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
+      const msgId = await ctx.editReply({ content: `${label}: ${promptPreview}` }).catch(
+        () => undefined,
+      );
+      deps.resetProgress?.(prompt, msgId);
+    } else {
+      deps.resetProgress?.(prompt);
+    }
+    return interactionValid;
+  }
+
   return {
     // deno-lint-ignore no-explicit-any
     async onClaude(ctx: any, prompt: string, sessionId?: string): Promise<ClaudeResponse> {
@@ -74,15 +97,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       const controller = new AbortController();
       deps.setClaudeController(controller);
 
-      // Defer interaction — "thinking..." stays visible while Claude works
-      let interactionValid = true;
-      try {
-        await ctx.deferReply();
-      } catch {
-        console.warn("Failed to defer reply, interaction may have expired");
-        interactionValid = false;
-      }
-      deps.resetProgress?.(prompt);
+      const interactionValid = await deferAndInitProgress(ctx, prompt);
 
       let result: ClaudeResponse;
       try {
@@ -103,10 +118,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
         );
       } catch (error) {
         deps.setClaudeController(null);
-        if (interactionValid) {
-          const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
-          await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
-        }
         await sendClaudeMessages([{
           type: "system",
           content: error instanceof Error ? error.message : String(error),
@@ -121,11 +132,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
 
-      // Replace "thinking..." with the prompt to preserve user context
-      if (interactionValid) {
-        const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
-        await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
-      }
       await sendClaudeMessages([{
         type: "system",
         content: "",
@@ -153,15 +159,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       const controller = new AbortController();
       deps.setClaudeController(controller);
 
-      // Defer interaction — "thinking..." stays visible while Claude works
-      let interactionValid = true;
-      try {
-        await ctx.deferReply();
-      } catch {
-        console.warn("Failed to defer reply, interaction may have expired");
-        interactionValid = false;
-      }
-      deps.resetProgress?.(prompt);
+      const _interactionValid = await deferAndInitProgress(ctx, prompt, "Plan");
 
       let result: ClaudeResponse;
       try {
@@ -184,10 +182,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
         );
       } catch (error) {
         deps.setClaudeController(null);
-        if (interactionValid) {
-          const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
-          await ctx.editReply({ content: `Plan: ${promptPreview}` }).catch(() => {});
-        }
         await sendClaudeMessages([{
           type: "system",
           content: error instanceof Error ? error.message : String(error),
@@ -202,11 +196,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
 
-      // Replace "thinking..." with the prompt to preserve user context
-      if (interactionValid) {
-        const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
-        await ctx.editReply({ content: `Plan: ${promptPreview}` }).catch(() => {});
-      }
       await sendClaudeMessages([{
         type: "system",
         content: "",
@@ -236,15 +225,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       const actualPrompt = prompt || "Please continue.";
 
-      // Defer interaction — "thinking..." stays visible while Claude works
-      let interactionValid = true;
-      try {
-        await ctx.deferReply();
-      } catch {
-        console.warn("Failed to defer reply, interaction may have expired");
-        interactionValid = false;
-      }
-      deps.resetProgress?.(actualPrompt);
+      const _interactionValid = await deferAndInitProgress(ctx, actualPrompt);
 
       let result: ClaudeResponse;
       try {
@@ -265,12 +246,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
         );
       } catch (error) {
         deps.setClaudeController(null);
-        if (interactionValid) {
-          const promptPreview = actualPrompt.length > 200
-            ? actualPrompt.substring(0, 200) + "..."
-            : actualPrompt;
-          await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
-        }
         await sendClaudeMessages([{
           type: "system",
           content: error instanceof Error ? error.message : String(error),
@@ -285,13 +260,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
 
-      // Replace "thinking..." with the prompt to preserve user context
-      if (interactionValid) {
-        const promptPreview = actualPrompt.length > 200
-          ? actualPrompt.substring(0, 200) + "..."
-          : actualPrompt;
-        await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
-      }
       await sendClaudeMessages([{
         type: "system",
         content: "",
@@ -321,15 +289,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       const actualPrompt = prompt || "Please continue.";
 
-      // Defer interaction — "thinking..." stays visible while Claude works
-      let interactionValid = true;
-      try {
-        await ctx.deferReply();
-      } catch {
-        console.warn("Failed to defer reply, interaction may have expired");
-        interactionValid = false;
-      }
-      deps.resetProgress?.(actualPrompt);
+      const _interactionValid = await deferAndInitProgress(ctx, actualPrompt, "Plan");
 
       let result: ClaudeResponse;
       try {
@@ -352,12 +312,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
         );
       } catch (error) {
         deps.setClaudeController(null);
-        if (interactionValid) {
-          const promptPreview = actualPrompt.length > 200
-            ? actualPrompt.substring(0, 200) + "..."
-            : actualPrompt;
-          await ctx.editReply({ content: `Plan: ${promptPreview}` }).catch(() => {});
-        }
         await sendClaudeMessages([{
           type: "system",
           content: error instanceof Error ? error.message : String(error),
@@ -372,13 +326,6 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
 
-      // Replace "thinking..." with the prompt to preserve user context
-      if (interactionValid) {
-        const promptPreview = actualPrompt.length > 200
-          ? actualPrompt.substring(0, 200) + "..."
-          : actualPrompt;
-        await ctx.editReply({ content: `Plan: ${promptPreview}` }).catch(() => {});
-      }
       await sendClaudeMessages([{
         type: "system",
         content: "",
