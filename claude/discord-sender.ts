@@ -1,10 +1,10 @@
-import { splitText } from "../discord/utils.ts";
 import type { ClaudeMessage } from "./types.ts";
 import type { MessageContent, EmbedData, ComponentData } from "../discord/types.ts";
 
 // Discord sender interface for dependency injection
 export interface DiscordSender {
-  sendMessage(content: MessageContent): Promise<void>;
+  sendMessage(content: MessageContent): Promise<string | undefined>;
+  editMessage(messageId: string, content: MessageContent): Promise<void>;
 }
 
 // Store full content for expand functionality
@@ -13,138 +13,75 @@ export const expandableContent = new Map<string, string>();
 // Helper function to create common action buttons
 function createActionButtons(sessionId?: string): ComponentData[] {
   const buttons: ComponentData[] = [];
-  
+
   if (sessionId) {
     buttons.push(
       {
-        type: 'button',
+        type: "button",
         customId: `continue:${sessionId}`,
-        label: '➡️ Continue',
-        style: 'primary'
+        label: "Continue",
+        style: "primary",
       },
       {
-        type: 'button',
+        type: "button",
         customId: `copy-session:${sessionId}`,
-        label: '📋 Session ID',
-        style: 'secondary'
+        label: "Session ID",
+        style: "secondary",
       },
       {
-        type: 'button',
-        customId: 'jump-previous',
-        label: '⬆️ Jump to Previous',
-        style: 'secondary'
-      }
+        type: "button",
+        customId: "jump-previous",
+        label: "Jump to Previous",
+        style: "secondary",
+      },
     );
   }
-  
+
   buttons.push({
-    type: 'button',
-    customId: 'cancel-claude',
-    label: '❌ Cancel',
-    style: 'danger'
+    type: "button",
+    customId: "cancel-claude",
+    label: "Cancel",
+    style: "danger",
   });
-  
+
   return buttons;
 }
 
-// Helper function to create workflow buttons  
+// Helper function to create workflow buttons
 function createWorkflowButtons(): ComponentData[] {
   return [
     {
-      type: 'button',
-      customId: 'workflow:git-status',
-      label: '📊 Git Status',
-      style: 'secondary'
-    }
+      type: "button",
+      customId: "workflow:git-status",
+      label: "Git Status",
+      style: "secondary",
+    },
   ];
 }
 
-// Helper function to truncate content with smart preview
-function truncateContent(content: string, maxLines = 15, maxChars = 1000): { preview: string; isTruncated: boolean; totalLines: number } {
-  const lines = content.split('\n');
-  const totalLines = lines.length;
-  const truncatedLines = lines.slice(0, maxLines);
-  const preview = truncatedLines.join('\n');
-  
-  if (preview.length > maxChars) {
-    return {
-      preview: preview.substring(0, maxChars - 3) + '...',
-      isTruncated: true,
-      totalLines
-    };
-  }
-  
-  return {
-    preview,
-    isTruncated: lines.length > maxLines,
-    totalLines
-  };
-}
-
-// Helper function to detect file type from path
-function getFileTypeInfo(filePath: string): { icon: string; language: string } {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  
-  const fileTypes: Record<string, { icon: string; language: string }> = {
-    'ts': { icon: '📘', language: 'TypeScript' },
-    'tsx': { icon: '⚛️', language: 'React/TypeScript' },
-    'js': { icon: '📙', language: 'JavaScript' },
-    'jsx': { icon: '⚛️', language: 'React/JavaScript' },
-    'py': { icon: '🐍', language: 'Python' },
-    'rs': { icon: '🦀', language: 'Rust' },
-    'go': { icon: '🐹', language: 'Go' },
-    'java': { icon: '☕', language: 'Java' },
-    'md': { icon: '📝', language: 'Markdown' },
-    'json': { icon: '📋', language: 'JSON' },
-    'yml': { icon: '⚙️', language: 'YAML' },
-    'yaml': { icon: '⚙️', language: 'YAML' },
-    'html': { icon: '🌐', language: 'HTML' },
-    'css': { icon: '🎨', language: 'CSS' },
-    'scss': { icon: '🎨', language: 'SCSS' },
-  };
-  
-  return fileTypes[ext] || { icon: '📄', language: 'Text' };
-}
-
-// Tool-specific formatters
-function formatGenericTool(toolName: string, metadata: any): { title: string; color: number; description: string } {
-  const inputStr = JSON.stringify(metadata.input || {}, null, 2);
-  const { preview, isTruncated } = truncateContent(inputStr, 10, 800);
-  
-  return {
-    title: `🔧 Tool Use: ${toolName}`,
-    color: 0x0099ff,
-    description: `\`\`\`json\n${preview}\n\`\`\``
-  };
-}
-
 // Parse skip message types from environment variable
-// Supports both simple types (e.g., "tool_result") and subtypes (e.g., "system:completion")
 function getSkipMessageTypes(): Set<string> {
   const skipTypesEnv = Deno.env.get("CLAUDE_SKIP_MESSAGE_TYPES");
   if (!skipTypesEnv) {
     return new Set();
   }
-  
-  // Parse comma-separated list, trim whitespace, and convert to lowercase
+
   return new Set(
     skipTypesEnv
-      .split(',')
-      .map(type => type.trim().toLowerCase())
-      .filter(Boolean)
+      .split(",")
+      .map((type) => type.trim().toLowerCase())
+      .filter(Boolean),
   );
 }
 
 // Check if a message should be skipped based on type and subtype
 function shouldSkipMessage(msg: ClaudeMessage, skipMessageTypes: Set<string>): boolean {
   const msgType = msg.type.toLowerCase();
-  
-  // Check for exact type match (e.g., "tool_result")
+
   if (skipMessageTypes.has(msgType)) {
     return true;
   }
-  
-  // Check for subtype match (e.g., "system:completion")
+
   if (msg.metadata?.subtype) {
     const subtype = msg.metadata.subtype.toLowerCase();
     const typeSubtypePattern = `${msgType}:${subtype}`;
@@ -152,274 +89,406 @@ function shouldSkipMessage(msg: ClaudeMessage, skipMessageTypes: Set<string>): b
       return true;
     }
   }
-  
+
   return false;
+}
+
+// Convert a ClaudeMessage into a compact one-line summary for the progress embed
+function messageToSummaryLine(msg: ClaudeMessage): string | null {
+  switch (msg.type) {
+    case "text": {
+      const text = msg.content.trim();
+      if (!text) return null;
+      // Show first 1000 chars of assistant text
+      const preview = text.length > 1000 ? text.substring(0, 1000) + "..." : text;
+      return `\\> ${preview}`;
+    }
+
+    case "tool_use": {
+      const toolName = msg.metadata?.name || "Unknown";
+
+      if (toolName === "TodoWrite") {
+        const todos = msg.metadata?.input?.todos || [];
+        return `**Todo** \u2014 ${todos.length} item(s)`;
+      }
+
+      if (toolName === "Edit") {
+        const filePath = msg.metadata?.input?.file_path || "unknown";
+        return `**Edit** \u2014 \`${filePath}\``;
+      }
+
+      if (toolName === "Write") {
+        const filePath = msg.metadata?.input?.file_path || "unknown";
+        return `**Write** \u2014 \`${filePath}\``;
+      }
+
+      if (toolName === "Read") {
+        const filePath = msg.metadata?.input?.file_path || "unknown";
+        return `**Read** \u2014 \`${filePath}\``;
+      }
+
+      if (toolName === "Bash") {
+        const cmd = msg.metadata?.input?.command || "";
+        const preview = cmd.length > 80 ? cmd.substring(0, 80) + "..." : cmd;
+        return `**Bash** \u2014 \`${preview}\``;
+      }
+
+      if (toolName === "Glob" || toolName === "Grep") {
+        const pattern = msg.metadata?.input?.pattern || msg.metadata?.input?.glob || "";
+        return `**${toolName}** \u2014 \`${pattern}\``;
+      }
+
+      if (toolName === "Task") {
+        const desc = msg.metadata?.input?.description || "";
+        return `**Task** \u2014 ${desc}`;
+      }
+
+      // Generic tool
+      const inputStr = JSON.stringify(msg.metadata?.input || {});
+      const preview = inputStr.length > 80 ? inputStr.substring(0, 80) + "..." : inputStr;
+      return `**${toolName}** \u2014 \`${preview}\``;
+    }
+
+    case "tool_result": {
+      let content = msg.content;
+      // Strip system reminders
+      content = content.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "");
+      content = content.replace(/\n\s*\n\s*\n/g, "\n\n").trim();
+      if (!content) return null;
+
+      const lines = content.split("\n");
+      const lineCount = lines.length;
+      if (lineCount <= 1 && content.length <= 100) {
+        return `Result \u2014 ${content}`;
+      }
+      return `Result \u2014 ${lineCount} line(s)`;
+    }
+
+    case "thinking": {
+      const text = msg.content.trim();
+      if (!text) return "Thinking...";
+      const preview = text.length > 150 ? text.substring(0, 150) + "..." : text;
+      return `*Thinking: ${preview}*`;
+    }
+
+    case "other":
+      return "Other output received";
+
+    default:
+      return null;
+  }
+}
+
+const MAX_DESCRIPTION_LENGTH = 3800;
+const EDIT_DEBOUNCE_MS = 1500;
+
+// State for progress tracking
+interface ProgressState {
+  messageId: string | null;
+  lines: string[];
+  trimmedCount: number;
+  prompt: string;
+  editTimer: number | null;
+  pendingEdit: boolean;
+  finished: boolean;
 }
 
 // Create sendClaudeMessages function with dependency injection
 export function createClaudeSender(sender: DiscordSender) {
   const skipMessageTypes = getSkipMessageTypes();
-  
-  return async function sendClaudeMessages(messages: ClaudeMessage[]) {
-  for (const msg of messages) {
-    // Skip messages if their type or type:subtype is in the skip list
-    if (shouldSkipMessage(msg, skipMessageTypes)) {
-      continue;
+
+  const state: ProgressState = {
+    messageId: null,
+    lines: [],
+    trimmedCount: 0,
+    prompt: "",
+    editTimer: null,
+    pendingEdit: false,
+    finished: false,
+  };
+
+  // Serialize sendClaudeMessages calls to prevent interleaving
+  let messageQueue: Promise<void> = Promise.resolve();
+
+  // Build the progress embed description from accumulated lines
+  function buildProgressDescription(): string {
+    let desc = "";
+
+    if (state.trimmedCount > 0) {
+      desc += `*[... ${state.trimmedCount} earlier entries trimmed]*\n`;
     }
-    
-    switch (msg.type) {
-      case 'text': {
-        const chunks = splitText(msg.content, 4000);
-        for (let i = 0; i < chunks.length; i++) {
-          await sender.sendMessage({
-            embeds: [{
-              color: 0x00ff00,
-              title: chunks.length > 1 ? `Assistant (${i + 1}/${chunks.length})` : 'Assistant',
-              description: chunks[i],
-              timestamp: true
-            }]
-          });
-        }
-        break;
-      }
-      
-      case 'tool_use': {
-        if (msg.metadata?.name === 'TodoWrite') {
-          const todos = msg.metadata?.input?.todos || [];
-          const statusEmojis: Record<string, string> = {
-            pending: '⏳',
-            in_progress: '🔄',
-            completed: '✅'
-          };
-          const priorityEmojis: Record<string, string> = {
-            high: '🔴',
-            medium: '🟡',
-            low: '🟢'
-          };
-          
-          let todoList = '';
-          if (todos.length === 0) {
-            todoList = 'Task list is empty';
-          } else {
-            for (const todo of todos) {
-              const statusEmoji = statusEmojis[todo.status] || '❓';
-              const priorityEmoji = priorityEmojis[todo.priority] || '';
-              const priorityText = priorityEmoji ? `${priorityEmoji} ` : '';
-              todoList += `${statusEmoji} ${priorityText}**${todo.content}**\n`;
-            }
-          }
-          
-          await sender.sendMessage({
-            embeds: [{
-              color: 0x9932cc,
-              title: '📝 Todo List Updated',
-              description: todoList,
-              footer: { text: '⏳ Pending | 🔄 In Progress | ✅ Completed | 🔴 High | 🟡 Medium | 🟢 Low' },
-              timestamp: true
-            }]
-          });
-        } else {
-          // Use simplified consistent formatting for all tools
-          const toolName = msg.metadata?.name || 'Unknown';
-          let embedData;
-          
-          // Special handling for Edit tool to keep "Replacing/With" functionality
-          if (toolName === 'Edit') {
-            const filePath = msg.metadata.input?.file_path || 'Unknown file';
-            const oldString = msg.metadata.input?.old_string || '';
-            const newString = msg.metadata.input?.new_string || '';
-            const fileInfo = getFileTypeInfo(filePath);
-            
-            const fields = [
-              { name: '📁 File Path', value: `\`${filePath}\``, inline: false }
-            ];
-            
-            if (oldString) {
-              const { preview: oldPreview } = truncateContent(oldString, 3, 150);
-              fields.push({ name: '🔴 Replacing', value: `\`\`\`\n${oldPreview}\n\`\`\``, inline: false });
-            }
-            
-            if (newString) {
-              const { preview: newPreview } = truncateContent(newString, 3, 150);
-              fields.push({ name: '🟢 With', value: `\`\`\`\n${newPreview}\n\`\`\``, inline: false });
-            }
-            
-            await sender.sendMessage({
-              embeds: [{
-                color: 0xffaa00,
-                title: '✏️ Tool Use: Edit',
-                fields,
-                timestamp: true
-              }]
-            });
-          } else {
-            // All other tools use generic consistent formatting
-            const inputStr = JSON.stringify(msg.metadata.input || {}, null, 2);
-            const { preview, isTruncated } = truncateContent(inputStr, 10, 800);
-            
-            const messageContent: MessageContent = {
-              embeds: [{
-                color: 0x0099ff,
-                title: `🔧 Tool Use: ${toolName}`,
-                description: `\`\`\`json\n${preview}\n\`\`\``,
-                timestamp: true
-              }]
-            };
-            
-            // Add expand button if content was truncated
-            if (isTruncated) {
-              const expandId = `tool-${msg.metadata?.id || Date.now()}`;
-              expandableContent.set(expandId, inputStr);
-              
-              messageContent.components = [{
-                type: 'actionRow',
-                components: [{
-                  type: 'button',
-                  customId: `expand:${expandId}`,
-                  label: '📖 Show Full Content',
-                  style: 'secondary'
-                }]
-              }];
-            }
-            
-            await sender.sendMessage(messageContent);
-          }
-        }
-        break;
-      }
-      
-      case 'tool_result': {
-        // Filter out system reminder content
-        let cleanContent = msg.content;
-        
-        // Remove system reminder blocks
-        cleanContent = cleanContent.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
-        
-        // Remove any remaining empty lines or extra whitespace
-        cleanContent = cleanContent.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-        
-        if (!cleanContent) {
-          // If no content left after filtering, don't show the tool result
-          break;
-        }
-        
-        const { preview, isTruncated, totalLines } = truncateContent(cleanContent);
-        
-        const messageContent: MessageContent = {
-          embeds: [{
-            color: 0x00ffff,
-            title: `✅ Tool Result${isTruncated ? ` (+${totalLines - 15} more lines)` : ''}`,
-            description: `\`\`\`\n${preview}\n\`\`\``,
-            timestamp: true
-          }]
-        };
-        
-        // Add expand button if content was truncated
-        if (isTruncated) {
-          const expandId = `result-${Date.now()}`;
-          expandableContent.set(expandId, cleanContent);
-          
-          messageContent.components = [{
-            type: 'actionRow',
-            components: [{
-              type: 'button',
-              customId: `expand:${expandId}`,
-              label: '📖 Show Full Result',
-              style: 'secondary'
-            }]
-          }];
-        }
-        
-        await sender.sendMessage(messageContent);
-        break;
-      }
-      
-      case 'thinking': {
-        const chunks = splitText(msg.content, 4000);
-        for (let i = 0; i < chunks.length; i++) {
-          await sender.sendMessage({
-            embeds: [{
-              color: 0x9b59b6,
-              title: chunks.length > 1 ? `💭 Thinking (${i + 1}/${chunks.length})` : '💭 Thinking',
-              description: chunks[i],
-              timestamp: true
-            }]
-          });
-        }
-        break;
-      }
-      
-      case 'system': {
-        const embedData: EmbedData = {
-          color: msg.metadata?.subtype === 'completion' ? 0x00ff00 : 0xaaaaaa,
-          title: msg.metadata?.subtype === 'completion' ? '✅ Claude Code Complete' : `⚙️ System: ${msg.metadata?.subtype || 'info'}`,
+
+    desc += state.lines.join("\n\n");
+
+    return desc;
+  }
+
+  // Trim old lines if description exceeds max length
+  function trimLines(): void {
+    while (state.lines.length > 1) {
+      const desc = buildProgressDescription();
+      if (desc.length <= MAX_DESCRIPTION_LENGTH) break;
+      state.lines.shift();
+      state.trimmedCount++;
+    }
+  }
+
+  // Schedule a debounced edit to the progress message
+  function scheduleEdit(): void {
+    state.pendingEdit = true;
+
+    if (state.editTimer !== null) {
+      clearTimeout(state.editTimer);
+    }
+
+    state.editTimer = setTimeout(async () => {
+      state.editTimer = null;
+      state.pendingEdit = false;
+      await flushEdit();
+    }, EDIT_DEBOUNCE_MS) as unknown as number;
+  }
+
+  // Immediately flush the current progress state to Discord
+  async function flushEdit(): Promise<void> {
+    if (!state.messageId || state.finished) return;
+
+    const description = buildProgressDescription();
+
+    try {
+      await sender.editMessage(state.messageId, {
+        embeds: [{
+          color: 0xffff00,
+          title: "Claude Code Running...",
+          description,
           timestamp: true,
-          fields: []
-        };
-        
-        if (msg.metadata?.cwd) {
-          embedData.fields!.push({ name: 'Working Directory', value: `\`${msg.metadata.cwd}\``, inline: false });
-        }
-        if (msg.metadata?.session_id) {
-          embedData.fields!.push({ name: 'Session ID', value: `\`${msg.metadata.session_id}\``, inline: false });
-        }
-        if (msg.metadata?.model) {
-          embedData.fields!.push({ name: 'Model', value: msg.metadata.model, inline: true });
-        }
-        if (msg.metadata?.total_cost_usd !== undefined) {
-          embedData.fields!.push({ name: 'Cost', value: `$${msg.metadata.total_cost_usd.toFixed(4)}`, inline: true });
-        }
-        if (msg.metadata?.duration_ms !== undefined) {
-          embedData.fields!.push({ name: 'Duration', value: `${(msg.metadata.duration_ms / 1000).toFixed(2)}s`, inline: true });
-        }
-        
-        // Special handling for shutdown
-        if (msg.metadata?.subtype === 'shutdown') {
-          embedData.color = 0xff0000;
-          embedData.title = '🛑 Shutdown';
-          embedData.description = `Bot stopped by signal ${msg.metadata.signal}`;
-          embedData.fields = [
-            { name: 'Category', value: msg.metadata.categoryName, inline: true },
-            { name: 'Repository', value: msg.metadata.repoName, inline: true },
-            { name: 'Branch', value: msg.metadata.branchName, inline: true }
-          ];
-        }
-        
-        // Add interactive buttons for completed sessions (but not shutdown messages)
-        const messageContent: MessageContent = { embeds: [embedData] };
-        
-        if (msg.metadata?.subtype === 'completion' && msg.metadata?.session_id) {
-          const actionButtons = createActionButtons(msg.metadata.session_id);
-          const workflowButtons = createWorkflowButtons();
-          
-          messageContent.components = [
-            { type: 'actionRow', components: actionButtons },
-            { type: 'actionRow', components: workflowButtons }
-          ];
-        }
-        
-        await sender.sendMessage(messageContent);
-        break;
+        }],
+      });
+    } catch (error) {
+      console.warn(
+        "Failed to edit progress message:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  // Reset progress state (call before each new session)
+  // If messageId is provided, reuse that message for progress updates instead of creating a new one
+  function resetProgress(prompt?: string, messageId?: string): void {
+    if (state.editTimer !== null) {
+      clearTimeout(state.editTimer);
+      state.editTimer = null;
+    }
+    state.messageId = messageId || null;
+    state.lines = [];
+    state.trimmedCount = 0;
+    state.prompt = prompt || "";
+    state.pendingEdit = false;
+    state.finished = false;
+  }
+
+  async function processMessages(messages: ClaudeMessage[]): Promise<void> {
+    for (const msg of messages) {
+      // Never skip completion/failure messages — they control the embed state
+      const isInternalSystem = msg.type === "system" &&
+        (msg.metadata?.subtype === "completion" || msg.metadata?.subtype === "failure");
+
+      // Skip messages if their type or type:subtype is in the skip list
+      if (!isInternalSystem && shouldSkipMessage(msg, skipMessageTypes)) {
+        continue;
       }
-      
-      case 'other': {
-        const jsonStr = JSON.stringify(msg.metadata || msg.content, null, 2);
-        // Account for code block markers when splitting
-        const maxChunkLength = 4096 - "```json\n\n```".length - 50; // 50 chars safety margin
-        const chunks = splitText(jsonStr, maxChunkLength);
-        for (let i = 0; i < chunks.length; i++) {
-          await sender.sendMessage({
-            embeds: [{
-              color: 0xffaa00,
-              title: chunks.length > 1 ? `Other Content (${i + 1}/${chunks.length})` : 'Other Content',
-              description: `\`\`\`json\n${chunks[i]}\n\`\`\``,
-              timestamp: true
-            }]
-          });
+
+      // Terminal messages (completion, shutdown)
+      if (msg.type === "system") {
+        // Flush any pending progress edit first
+        if (state.editTimer !== null) {
+          clearTimeout(state.editTimer);
+          state.editTimer = null;
         }
-        break;
+        if (state.pendingEdit || state.messageId) {
+          await flushEdit();
+        }
+
+        await sendSystemMessage(msg);
+        continue;
+      }
+
+      // Long text messages: send as standalone message instead of cramming into progress embed
+      if (msg.type === "text" && msg.content.trim().length > 1000) {
+        // Flush pending progress edit first
+        if (state.pendingEdit && state.messageId) {
+          if (state.editTimer !== null) {
+            clearTimeout(state.editTimer);
+            state.editTimer = null;
+          }
+          await flushEdit();
+        }
+
+        const text = msg.content.trim();
+        // Discord message limit is 2000 chars; split if needed
+        const MAX_MSG_LENGTH = 1990;
+        if (text.length <= MAX_MSG_LENGTH) {
+          await sender.sendMessage({ content: text });
+        } else {
+          // Send in chunks at line boundaries
+          let remaining = text;
+          while (remaining.length > 0) {
+            let chunk: string;
+            if (remaining.length <= MAX_MSG_LENGTH) {
+              chunk = remaining;
+              remaining = "";
+            } else {
+              const cutoff = remaining.lastIndexOf("\n", MAX_MSG_LENGTH);
+              const splitAt = cutoff > MAX_MSG_LENGTH / 2 ? cutoff : MAX_MSG_LENGTH;
+              chunk = remaining.substring(0, splitAt);
+              remaining = remaining.substring(splitAt).trimStart();
+            }
+            await sender.sendMessage({ content: chunk });
+          }
+        }
+
+        // Add a short note in progress lines so the embed still references it
+        state.lines.push("\\> *(full response sent above)*");
+        trimLines();
+        continue;
+      }
+
+      // Non-terminal messages: append to progress embed
+      const summaryLine = messageToSummaryLine(msg);
+      if (!summaryLine) continue;
+
+      state.lines.push(summaryLine);
+      trimLines();
+
+      // If no progress message yet, send one
+      if (!state.messageId) {
+        const description = buildProgressDescription();
+        const msgId = await sender.sendMessage({
+          embeds: [{
+            color: 0xffff00,
+            title: "Claude Code Running...",
+            description,
+            timestamp: true,
+          }],
+        });
+        state.messageId = msgId || null;
+      } else {
+        // Schedule a debounced edit
+        scheduleEdit();
       }
     }
   }
-  };
+
+  // Serialize all sendClaudeMessages calls through a queue to prevent interleaving
+  function sendClaudeMessages(messages: ClaudeMessage[]): Promise<void> {
+    messageQueue = messageQueue.then(() => processMessages(messages)).catch(() => {});
+    return messageQueue;
+  }
+
+  async function sendSystemMessage(msg: ClaudeMessage): Promise<void> {
+    const isCompletion = msg.metadata?.subtype === "completion";
+    const isFailure = msg.metadata?.subtype === "failure";
+
+    const embedData: EmbedData = {
+      color: isCompletion ? 0x00ff00 : isFailure ? 0xff0000 : 0xaaaaaa,
+      title: isCompletion
+        ? "Claude Code Complete"
+        : isFailure
+        ? "Claude Code Failed"
+        : `System: ${msg.metadata?.subtype || "info"}`,
+      timestamp: true,
+      fields: [],
+    };
+
+    // Preserve progress lines in the final embed
+    if ((isCompletion || isFailure) && state.lines.length > 0) {
+      embedData.description = buildProgressDescription();
+    }
+
+    if (msg.metadata?.cwd) {
+      embedData.fields!.push({
+        name: "Working Directory",
+        value: `\`${msg.metadata.cwd}\``,
+        inline: false,
+      });
+    }
+    if (msg.metadata?.session_id) {
+      embedData.fields!.push({
+        name: "Session ID",
+        value: `\`${msg.metadata.session_id}\``,
+        inline: false,
+      });
+    }
+    if (msg.metadata?.model) {
+      embedData.fields!.push({ name: "Model", value: msg.metadata.model, inline: true });
+    }
+    if (msg.metadata?.total_cost_usd !== undefined) {
+      embedData.fields!.push({
+        name: "Cost",
+        value: `$${msg.metadata.total_cost_usd.toFixed(4)}`,
+        inline: true,
+      });
+    }
+    if (msg.metadata?.duration_ms !== undefined) {
+      embedData.fields!.push({
+        name: "Duration",
+        value: `${(msg.metadata.duration_ms / 1000).toFixed(2)}s`,
+        inline: true,
+      });
+    }
+
+    // Special handling for shutdown
+    if (msg.metadata?.subtype === "shutdown") {
+      embedData.color = 0xff0000;
+      embedData.title = "Shutdown";
+      embedData.description = `Bot stopped by signal ${msg.metadata.signal}`;
+      embedData.fields = [
+        { name: "Category", value: msg.metadata.categoryName, inline: true },
+        { name: "Repository", value: msg.metadata.repoName, inline: true },
+        { name: "Branch", value: msg.metadata.branchName, inline: true },
+      ];
+    }
+
+    // Build message content
+    const messageContent: MessageContent = { embeds: [embedData] };
+
+    if (isCompletion && msg.metadata?.session_id) {
+      const actionButtons = createActionButtons(msg.metadata.session_id);
+      const workflowButtons = createWorkflowButtons();
+
+      messageContent.components = [
+        { type: "actionRow", components: actionButtons },
+        { type: "actionRow", components: workflowButtons },
+      ];
+    }
+
+    // Add error details for failure messages
+    if (isFailure && msg.content) {
+      const errorPreview = msg.content.length > 200
+        ? msg.content.substring(0, 200) + "..."
+        : msg.content;
+      embedData.fields!.push({
+        name: "Error",
+        value: errorPreview,
+        inline: false,
+      });
+    }
+
+    // For completion/failure messages, edit the existing progress message instead of sending new
+    if (isCompletion || isFailure) {
+      state.finished = true;
+    }
+    if ((isCompletion || isFailure) && state.messageId) {
+      try {
+        await sender.editMessage(state.messageId, messageContent);
+      } catch {
+        // Fallback to sending new if edit fails
+        await sender.sendMessage(messageContent);
+      }
+    } else {
+      // Send as a NEW message (triggers Discord notification)
+      await sender.sendMessage(messageContent);
+    }
+  }
+
+  return { sendClaudeMessages, resetProgress };
 }

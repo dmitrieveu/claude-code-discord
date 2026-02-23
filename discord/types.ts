@@ -37,7 +37,8 @@ export interface MessageContent {
 
 export interface InteractionContext {
   deferReply(): Promise<void>;
-  editReply(content: MessageContent): Promise<void>;
+  deleteReply(): Promise<void>;
+  editReply(content: MessageContent): Promise<string | undefined>;
   followUp(content: MessageContent & { ephemeral?: boolean }): Promise<void>;
   reply(content: MessageContent & { ephemeral?: boolean }): Promise<void>;
   update(content: MessageContent): Promise<void>;

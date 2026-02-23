@@ -172,9 +172,14 @@ export async function createDiscordBot(
       async deferReply(): Promise<void> {
         await interaction.deferReply();
       },
-      
-      async editReply(content: MessageContent): Promise<void> {
-        await interaction.editReply(convertMessageContent(content));
+
+      async deleteReply(): Promise<void> {
+        await interaction.deleteReply();
+      },
+
+      async editReply(content: MessageContent): Promise<string | undefined> {
+        const msg = await interaction.editReply(convertMessageContent(content));
+        return msg?.id;
       },
       
       async followUp(content: MessageContent & { ephemeral?: boolean }): Promise<void> {
@@ -401,38 +406,38 @@ export async function createDiscordBot(
     }
   }
   
-  // Register commands
+  // Register commands (done inside ClientReady to use guild commands for instant updates)
   const rest = new REST({ version: '10' }).setToken(discordToken);
-  
-  try {
-    console.log('Registering slash commands...');
-    await rest.put(
-      Routes.applicationCommands(applicationId),
-      { body: commands.map(cmd => cmd.toJSON()) },
-    );
-    console.log('Slash commands registered');
-  } catch (error) {
-    console.error('Failed to register slash commands:', error);
-    throw error;
-  }
-  
+
   // Event handlers
   client.once(Events.ClientReady, async () => {
     console.log(`Bot logged in: ${client.user?.tag}`);
     console.log(`Category: ${actualCategoryName}`);
     console.log(`Branch: ${branchName}`);
     console.log(`Working directory: ${workDir}`);
-    
+
     const guilds = client.guilds.cache;
     if (guilds.size === 0) {
       console.error('Error: Bot is not in any servers');
       return;
     }
-    
+
     const guild = guilds.first();
     if (!guild) {
       console.error('Error: Guild not found');
       return;
+    }
+
+    try {
+      console.log(`Registering slash commands for guild ${guild.name}...`);
+      await rest.put(
+        Routes.applicationGuildCommands(applicationId, guild.id),
+        { body: commands.map(cmd => cmd.toJSON()) },
+      );
+      console.log('Slash commands registered');
+    } catch (error) {
+      console.error('Failed to register slash commands:', error);
+      throw error;
     }
     
     try {

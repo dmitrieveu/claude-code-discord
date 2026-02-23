@@ -91,10 +91,11 @@ export const enhancedClaudeCommands = [
 
 export interface EnhancedClaudeHandlerDeps {
   workDir: string;
-  claudeController: AbortController | null;
+  getClaudeController: () => AbortController | null;
   setClaudeController: (controller: AbortController | null) => void;
   setClaudeSessionId: (sessionId: string | undefined) => void;
   sendClaudeMessages: (messages: any[]) => Promise<void>;
+  resetProgress?: (prompt?: string, messageId?: string) => void;
   sessionManager: any;
   crashHandler: any;
 }
@@ -115,14 +116,17 @@ export function createEnhancedClaudeHandlers(deps: EnhancedClaudeHandlerDeps) {
     ) {
       try {
         // Cancel any existing session
-        if (deps.claudeController) {
-          deps.claudeController.abort();
+        const existingController = deps.getClaudeController();
+        if (existingController) {
+          existingController.abort();
         }
 
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
+        // Defer interaction — "thinking..." stays visible while Claude works
         await ctx.deferReply();
+        deps.resetProgress?.(prompt);
 
         // Apply template if specified
         let enhancedPrompt = prompt;
@@ -132,26 +136,9 @@ export function createEnhancedClaudeHandlers(deps: EnhancedClaudeHandlerDeps) {
         }
 
         // Parse context files
-        const contextFilesList = contextFiles ? 
-          contextFiles.split(',').map(f => f.trim()).filter(f => f.length > 0) : 
+        const contextFilesList = contextFiles ?
+          contextFiles.split(',').map(f => f.trim()).filter(f => f.length > 0) :
           undefined;
-
-        await ctx.editReply({
-          embeds: [{
-            color: 0xffff00,
-            title: '🤖 Enhanced Claude Code Running...',
-            description: 'Processing with advanced options...',
-            fields: [
-              { name: 'Model', value: model || 'Default', inline: true },
-              { name: 'Template', value: template || 'None', inline: true },
-              { name: 'System Info', value: includeSystemInfo ? 'Yes' : 'No', inline: true },
-              { name: 'Git Context', value: includeGitContext ? 'Yes' : 'No', inline: true },
-              { name: 'Context Files', value: contextFilesList?.length ? `${contextFilesList.length} files` : 'None', inline: true },
-              { name: 'Prompt Preview', value: `\`${enhancedPrompt.substring(0, 200)}${enhancedPrompt.length > 200 ? '...' : ''}\``, inline: false }
-            ],
-            timestamp: true
-          }]
-        });
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
 
@@ -180,10 +167,12 @@ export function createEnhancedClaudeHandlers(deps: EnhancedClaudeHandlerDeps) {
         deps.setClaudeSessionId(result.sessionId);
         deps.setClaudeController(null);
 
-        // Update session manager
+        // Remove "thinking..." and send completion message
+        const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
+        await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
         if (result.sessionId) {
           sessionManager.updateSession(result.sessionId, result.cost);
-          
+
           await sendClaudeMessages([{
             type: 'system',
             content: '',
@@ -206,6 +195,8 @@ export function createEnhancedClaudeHandlers(deps: EnhancedClaudeHandlerDeps) {
 
         return result;
       } catch (error) {
+        const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
+        await ctx.editReply({ content: `Command: ${promptPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'enhanced', 'Enhanced Claude query');
         throw error;
       }

@@ -132,6 +132,7 @@ export interface AgentHandlerDeps {
   workDir: string;
   crashHandler: any;
   sendClaudeMessages: (messages: any[]) => Promise<void>;
+  resetProgress?: (prompt?: string, messageId?: string) => void;
   sessionManager: any;
 }
 
@@ -196,6 +197,7 @@ export function createAgentHandlers(deps: AgentHandlerDeps) {
       includeSystemInfo?: boolean
     ) {
       try {
+        deps.resetProgress?.(message || action);
         await ctx.deferReply();
 
         switch (action) {

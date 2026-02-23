@@ -188,9 +188,10 @@ export const additionalClaudeCommands = [
 
 export interface AdditionalClaudeHandlerDeps {
   workDir: string;
-  claudeController: AbortController | null;
+  getClaudeController: () => AbortController | null;
   setClaudeController: (controller: AbortController | null) => void;
   sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
+  resetProgress?: (prompt?: string, messageId?: string) => void;
   claudeSessionManager: ClaudeSessionManager;
   crashHandler: ProcessCrashHandler;
   settings: AdvancedBotSettings;
@@ -205,28 +206,30 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
     if (claudeMessages.length > 0) {
       sendClaudeMessages(claudeMessages).catch(() => {});
     }
-  }
+  };
 
   return {
     async onClaudeExplain(
       ctx: InteractionContext,
       content: string,
       detailLevel?: string,
-      includeExamples?: boolean
+      includeExamples?: boolean,
     ) {
+      const cmdPreview = content.length > 200 ? content.substring(0, 200) + "..." : content;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(content);
+
         let prompt = `Please explain the following in ${detailLevel || 'detailed'} terms`;
-        
+
         if (includeExamples) {
           prompt += `, and include practical code examples`;
         }
-        
+
         prompt += `:\n\n${content}`;
 
         const { enhancedClaudeQuery } = await import("./enhanced-client.ts");
-        
+
         const controller = new AbortController();
         deps.setClaudeController(controller);
 
@@ -246,8 +249,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'explain', 'Claude explain command');
         throw error;
       }
@@ -257,11 +262,13 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
       ctx: InteractionContext,
       errorOrCode: string,
       language?: string,
-      contextFiles?: string
+      contextFiles?: string,
     ) {
+      const cmdPreview = errorOrCode.length > 200 ? errorOrCode.substring(0, 200) + "..." : errorOrCode;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(errorOrCode);
+
         let prompt = `Please help me debug this ${language ? `${language} ` : ''}issue:\n\n${errorOrCode}`;
         
         if (contextFiles) {
@@ -296,8 +303,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'debug', 'Claude debug command');
         throw error;
       }
@@ -307,11 +316,13 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
       ctx: InteractionContext,
       code: string,
       focus?: string,
-      preserveFunctionality?: boolean
+      preserveFunctionality?: boolean,
     ) {
+      const cmdPreview = code.length > 200 ? code.substring(0, 200) + "..." : code;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(code);
+
         let prompt = `Please optimize this code`;
         
         if (focus) {
@@ -345,8 +356,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'optimize', 'Claude optimize command');
         throw error;
       }
@@ -357,11 +370,13 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
       codeOrFile: string,
       reviewType?: string,
       includeSecurity?: boolean,
-      includePerformance?: boolean
+      includePerformance?: boolean,
     ) {
+      const cmdPreview = codeOrFile.length > 200 ? codeOrFile.substring(0, 200) + "..." : codeOrFile;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(codeOrFile);
+
         let prompt = `Please perform a ${reviewType || 'standard'} code review of:\n\n${codeOrFile}\n\nPlease analyze:`;
         
         const analysisPoints = [
@@ -407,8 +422,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'review', 'Claude review command');
         throw error;
       }
@@ -418,11 +435,13 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
       ctx: InteractionContext,
       request: string,
       type?: string,
-      style?: string
+      style?: string,
     ) {
+      const cmdPreview = request.length > 200 ? request.substring(0, 200) + "..." : request;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(request);
+
         let prompt = `Please generate ${type ? `a ${type}` : 'code'} based on this request: ${request}`;
         
         if (style) {
@@ -452,8 +471,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'generate', 'Claude generate command');
         throw error;
       }
@@ -464,11 +485,13 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
       code: string,
       goal?: string,
       preserveBehavior?: boolean,
-      addTests?: boolean
+      addTests?: boolean,
     ) {
+      const cmdPreview = code.length > 200 ? code.substring(0, 200) + "..." : code;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(code);
+
         let prompt = `Please refactor this code`;
         
         if (goal) {
@@ -506,8 +529,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'refactor', 'Claude refactor command');
         throw error;
       }
@@ -518,11 +543,13 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
       topic: string,
       level?: string,
       includeExercises?: boolean,
-      stepByStep?: boolean
+      stepByStep?: boolean,
     ) {
+      const cmdPreview = topic.length > 200 ? topic.substring(0, 200) + "..." : topic;
       try {
         await ctx.deferReply();
-        
+        deps.resetProgress?.(topic);
+
         let prompt = `Please teach me about "${topic}" at ${level || 'intermediate'} level.`;
         
         if (stepByStep) {
@@ -556,8 +583,10 @@ export function createAdditionalClaudeHandlers(deps: AdditionalClaudeHandlerDeps
         );
 
         deps.setClaudeController(null);
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         return result;
       } catch (error) {
+        await ctx.editReply({ content: `Command: ${cmdPreview}` }).catch(() => {});
         await crashHandler.reportCrash('claude', error instanceof Error ? error : new Error(String(error)), 'learn', 'Claude learn command');
         throw error;
       }

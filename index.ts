@@ -9,13 +9,14 @@
  * @module index
  */
 
-import { 
-  createDiscordBot, 
+import {
+  createDiscordBot,
   type BotConfig,
   type InteractionContext,
   type CommandHandlers,
   type ButtonHandlers,
-  type BotDependencies
+  type BotDependencies,
+  type MessageContent,
 } from "./discord/index.ts";
 
 import { getGitInfo } from "./git/index.ts";
@@ -107,12 +108,22 @@ export async function createClaudeCodeBot(config: BotConfig) {
   // Bot instance placeholder
   // deno-lint-ignore no-explicit-any prefer-const
   let bot: any;
-  let claudeSender: ((messages: ClaudeMessage[]) => Promise<void>) | null = null;
-  
+  let claudeSenderObj: {
+    sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
+    resetProgress: (prompt?: string, messageId?: string) => void;
+  } | null = null;
+
   // Create sendClaudeMessages function that uses the sender when available
   const sendClaudeMessages = async (messages: ClaudeMessage[]) => {
-    if (claudeSender) {
-      await claudeSender(messages);
+    if (claudeSenderObj) {
+      await claudeSenderObj.sendClaudeMessages(messages);
+    }
+  };
+
+  // Reset progress state (exposed for command handlers)
+  const resetProgress = (prompt?: string, messageId?: string) => {
+    if (claudeSenderObj) {
+      claudeSenderObj.resetProgress(prompt, messageId);
     }
   };
 
@@ -132,6 +143,7 @@ export async function createClaudeCodeBot(config: BotConfig) {
       healthMonitor,
       claudeSessionManager,
       sendClaudeMessages,
+      resetProgress,
       onBotSettingsUpdate: (settings) => {
         botSettings.mentionEnabled = settings.mentionEnabled;
         botSettings.mentionUserId = settings.mentionUserId;
@@ -159,6 +171,8 @@ export async function createClaudeCodeBot(config: BotConfig) {
     healthMonitor,
     botSettings,
     cleanupInterval,
+    getDiscordClient: () => bot?.client ?? null,
+    categoryName: actualCategoryName,
   });
 
   // Create button handlers using the button handler factory
@@ -181,16 +195,34 @@ export async function createClaudeCodeBot(config: BotConfig) {
 
   // Create Discord bot
   bot = await createDiscordBot(config, handlers, buttonHandlers, dependencies, crashHandler);
-  
+
   // Create Discord sender for Claude messages
-  claudeSender = createClaudeSender(createDiscordSenderAdapter(bot));
+  claudeSenderObj = createClaudeSender(createDiscordSenderAdapter(bot));
+
+  // Re-spawn bots for existing worktrees (survives restart)
+  try {
+    const respawned = await worktreeBotManager.respawnExistingWorktrees({
+      mainWorkDir: workDir,
+      actualCategoryName,
+      discordToken,
+      applicationId,
+      botSettings,
+    });
+    if (respawned > 0) {
+      console.log(`✓ Re-spawned ${respawned} worktree bot(s)`);
+    }
+  } catch (error) {
+    console.warn(
+      `Warning: Failed to respawn worktree bots: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   
   // Setup signal handlers for graceful shutdown
   setupSignalHandlers({
     managers,
     allHandlers,
     getClaudeController: () => claudeController,
-    claudeSender,
+    sendClaudeMessages,
     actualCategoryName,
     repoName,
     branchName,
@@ -210,57 +242,100 @@ export async function createClaudeCodeBot(config: BotConfig) {
  * Create Discord sender adapter from bot instance.
  */
 // deno-lint-ignore no-explicit-any
+function buildDiscordPayload(
+  content: MessageContent,
+  // deno-lint-ignore no-explicit-any
+  discord: { EmbedBuilder: any; ActionRowBuilder: any; ButtonBuilder: any; ButtonStyle: any },
+  // deno-lint-ignore no-explicit-any
+): any {
+  const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = discord;
+  // deno-lint-ignore no-explicit-any
+  const payload: any = {};
+
+  if (content.content) payload.content = content.content;
+
+  if (content.embeds) {
+    // deno-lint-ignore no-explicit-any
+    payload.embeds = content.embeds.map((e: any) => {
+      const embed = new EmbedBuilder();
+      if (e.color !== undefined) embed.setColor(e.color);
+      if (e.title) embed.setTitle(e.title);
+      if (e.description) embed.setDescription(e.description);
+      // deno-lint-ignore no-explicit-any
+      if (e.fields) e.fields.forEach((f: any) => embed.addFields(f));
+      if (e.footer) embed.setFooter(e.footer);
+      if (e.timestamp) embed.setTimestamp();
+      return embed;
+    });
+  }
+
+  if (content.components) {
+    // deno-lint-ignore no-explicit-any
+    payload.components = content.components.map((row: any) => {
+      // deno-lint-ignore no-explicit-any
+      const actionRow = new ActionRowBuilder();
+      // deno-lint-ignore no-explicit-any
+      row.components.forEach((comp: any) => {
+        const button = new ButtonBuilder()
+          .setCustomId(comp.customId)
+          .setLabel(comp.label);
+
+        switch (comp.style) {
+          case "primary":
+            button.setStyle(ButtonStyle.Primary);
+            break;
+          case "secondary":
+            button.setStyle(ButtonStyle.Secondary);
+            break;
+          case "success":
+            button.setStyle(ButtonStyle.Success);
+            break;
+          case "danger":
+            button.setStyle(ButtonStyle.Danger);
+            break;
+          case "link":
+            button.setStyle(ButtonStyle.Link);
+            break;
+        }
+
+        actionRow.addComponents(button);
+      });
+      return actionRow;
+    });
+  }
+
+  return payload;
+}
+
+// deno-lint-ignore no-explicit-any
 function createDiscordSenderAdapter(bot: any): DiscordSender {
   return {
     async sendMessage(content) {
       const channel = bot.getChannel();
-      if (channel) {
-        const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import("npm:discord.js@14.14.1");
-        
-        // deno-lint-ignore no-explicit-any
-        const payload: any = {};
-        
-        if (content.content) payload.content = content.content;
-        
-        if (content.embeds) {
-          payload.embeds = content.embeds.map(e => {
-            const embed = new EmbedBuilder();
-            if (e.color !== undefined) embed.setColor(e.color);
-            if (e.title) embed.setTitle(e.title);
-            if (e.description) embed.setDescription(e.description);
-            if (e.fields) e.fields.forEach(f => embed.addFields(f));
-            if (e.footer) embed.setFooter(e.footer);
-            if (e.timestamp) embed.setTimestamp();
-            return embed;
-          });
-        }
-        
-        if (content.components) {
-          payload.components = content.components.map(row => {
-            // deno-lint-ignore no-explicit-any
-            const actionRow = new ActionRowBuilder<any>();
-            row.components.forEach(comp => {
-              const button = new ButtonBuilder()
-                .setCustomId(comp.customId)
-                .setLabel(comp.label);
-              
-              switch (comp.style) {
-                case 'primary': button.setStyle(ButtonStyle.Primary); break;
-                case 'secondary': button.setStyle(ButtonStyle.Secondary); break;
-                case 'success': button.setStyle(ButtonStyle.Success); break;
-                case 'danger': button.setStyle(ButtonStyle.Danger); break;
-                case 'link': button.setStyle(ButtonStyle.Link); break;
-              }
-              
-              actionRow.addComponents(button);
-            });
-            return actionRow;
-          });
-        }
-        
-        await channel.send(payload);
+      if (!channel) return undefined;
+
+      const discord = await import("npm:discord.js@14.14.1");
+      const payload = buildDiscordPayload(content, discord);
+      const sentMessage = await channel.send(payload);
+      return sentMessage?.id;
+    },
+
+    async editMessage(messageId, content) {
+      const channel = bot.getChannel();
+      if (!channel) return;
+
+      try {
+        const discord = await import("npm:discord.js@14.14.1");
+        const payload = buildDiscordPayload(content, discord);
+        const message = await channel.messages.fetch(messageId);
+        await message.edit(payload);
+      } catch (error) {
+        console.warn(
+          "Failed to edit message:",
+          error instanceof Error ? error.message : String(error),
+        );
       }
-    }
+    },
   };
 }
 
@@ -271,7 +346,7 @@ function setupSignalHandlers(ctx: {
   managers: BotManagers;
   allHandlers: AllHandlers;
   getClaudeController: () => AbortController | null;
-  claudeSender: ((messages: ClaudeMessage[]) => Promise<void>) | null;
+  sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
   actualCategoryName: string;
   repoName: string;
   branchName: string;
@@ -279,7 +354,7 @@ function setupSignalHandlers(ctx: {
   // deno-lint-ignore no-explicit-any
   bot: any;
 }) {
-  const { managers, allHandlers, getClaudeController, claudeSender, actualCategoryName, repoName, branchName, cleanupInterval, bot } = ctx;
+  const { managers, allHandlers, getClaudeController, sendClaudeMessages, actualCategoryName, repoName, branchName, cleanupInterval, bot } = ctx;
   const { crashHandler, healthMonitor } = managers;
   const { shell: shellHandlers, git: gitHandlers } = allHandlers;
   
@@ -298,8 +373,8 @@ function setupSignalHandlers(ctx: {
       }
       
       // Send shutdown message
-      if (claudeSender) {
-        await claudeSender([{
+      if (sendClaudeMessages) {
+        await sendClaudeMessages([{
           type: 'system',
           content: '',
           metadata: {

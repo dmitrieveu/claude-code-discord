@@ -161,6 +161,8 @@ export interface HandlerRegistryDeps {
   claudeSessionManager: ClaudeSessionManager;
   /** Function to send Claude messages */
   sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
+  /** Function to reset progress state between sessions */
+  resetProgress?: (prompt?: string, messageId?: string) => void;
   /** Callback when bot settings update */
   onBotSettingsUpdate?: (settings: { mentionEnabled: boolean; mentionUserId: string | null }) => void;
 }
@@ -344,17 +346,18 @@ export function createAllHandlers(
   const { 
     workDir, repoName, branchName, categoryName, discordToken, applicationId,
     shellManager, worktreeBotManager, crashHandler, claudeSessionManager,
-    sendClaudeMessages, onBotSettingsUpdate
+    sendClaudeMessages, resetProgress, onBotSettingsUpdate
   } = deps;
 
   const currentSettings = settings.getSettings();
 
   const claudeHandlers = createClaudeHandlers({
     workDir,
-    claudeController: claudeSession.getController(),
+    getClaudeController: claudeSession.getController,
     setClaudeController: claudeSession.setController,
     setClaudeSessionId: claudeSession.setSessionId,
     sendClaudeMessages,
+    resetProgress,
   });
 
   const gitHandlers = createGitHandlers({
@@ -393,10 +396,11 @@ export function createAllHandlers(
 
   const enhancedClaudeHandlers = createEnhancedClaudeHandlers({
     workDir,
-    claudeController: claudeSession.getController(),
+    getClaudeController: claudeSession.getController,
     setClaudeController: claudeSession.setController,
     setClaudeSessionId: claudeSession.setSessionId,
     sendClaudeMessages,
+    resetProgress,
     sessionManager: claudeSessionManager,
     crashHandler,
   });
@@ -408,10 +412,11 @@ export function createAllHandlers(
 
   const additionalClaudeHandlers = createAdditionalClaudeHandlers({
     workDir,
-    claudeController: claudeSession.getController(),
+    getClaudeController: claudeSession.getController,
     setClaudeController: claudeSession.setController,
     sendClaudeMessages,
-    sessionManager: claudeSessionManager,
+    resetProgress,
+    claudeSessionManager,
     crashHandler,
     settings: currentSettings.advanced,
   });
@@ -433,6 +438,7 @@ export function createAllHandlers(
     workDir,
     crashHandler,
     sendClaudeMessages,
+    resetProgress,
     sessionManager: claudeSessionManager,
   });
 
