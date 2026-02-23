@@ -515,10 +515,24 @@ if (import.meta.main) {
     const args = parseArgs(Deno.args);
     const categoryName = args.category || envCategoryName;
     const defaultMentionUserId = args.userId || envMentionUserId;
-    const workDir = envWorkDir || Deno.cwd();
-    
+    let workDir = envWorkDir || Deno.cwd();
+
+    // For bare repos, use the main/master worktree as the primary workDir
+    // so the parent bot always runs on the main branch
+    if (Deno.env.get("WORKTREE_BOT") !== "true") {
+      const { isBareRepository, findWorktreeForBareRepo } = await import("./git/repo-helpers.ts");
+      const isBare = await isBareRepository(workDir);
+      if (isBare) {
+        const mainWorktree = await findWorktreeForBareRepo(workDir);
+        if (mainWorktree) {
+          console.log(`Bare repo detected, using worktree: ${mainWorktree}`);
+          workDir = mainWorktree;
+        }
+      }
+    }
+
     // Get Git information
-    const gitInfo = await getGitInfo();
+    const gitInfo = await getGitInfo(workDir);
     
     // Create and start bot
     await createClaudeCodeBot({

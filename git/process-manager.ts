@@ -168,7 +168,14 @@ export class WorktreeBotManager {
     }
 
     const { mainWorkDir, actualCategoryName, discordToken, applicationId, botSettings } = config;
-    const resolvedMainWorkDir = resolve(mainWorkDir);
+
+    // Use realpath for reliable comparison (handles symlinks, trailing slashes, etc.)
+    let resolvedMainWorkDir: string;
+    try {
+      resolvedMainWorkDir = Deno.realPathSync(mainWorkDir);
+    } catch {
+      resolvedMainWorkDir = resolve(mainWorkDir);
+    }
 
     let worktrees;
     try {
@@ -181,9 +188,16 @@ export class WorktreeBotManager {
     }
 
     // Filter to only non-main, non-bare worktrees
-    const toSpawn = worktrees.filter(
-      (wt) => resolve(wt.path) !== resolvedMainWorkDir && !wt.isBare,
-    );
+    const toSpawn = worktrees.filter((wt) => {
+      if (wt.isBare) return false;
+      let resolvedWtPath: string;
+      try {
+        resolvedWtPath = Deno.realPathSync(wt.path);
+      } catch {
+        resolvedWtPath = resolve(wt.path);
+      }
+      return resolvedWtPath !== resolvedMainWorkDir;
+    });
 
     if (toSpawn.length === 0) {
       return 0;

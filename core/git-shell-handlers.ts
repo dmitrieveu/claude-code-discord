@@ -623,7 +623,7 @@ export function createUtilityCommandHandlers(
               { name: 'Claude Code', value: sessionStatus, inline: true },
               { name: 'Git Branch', value: gitStatusInfo.branch, inline: true },
               { name: 'Shell Processes', value: `${runningCount} running`, inline: true },
-              { name: 'Worktree Bots', value: `${worktreeStatus.totalBots} running`, inline: true },
+              { name: 'Worktree Bots', value: Deno.env.get("WORKTREE_BOT") === "true" ? "This is a worktree bot" : `${worktreeStatus.totalBots} running`, inline: true },
               { name: 'Mentions', value: botSettings.mentionEnabled ? `Enabled (<@${botSettings.mentionUserId}>)` : 'Disabled', inline: true }
             ],
             timestamp: true
