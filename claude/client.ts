@@ -62,11 +62,8 @@ export async function sendToClaudeCode(
       },
     };
 
-    console.log(`Claude Code: Running with ${modelUsed} model...`);
     if (continueMode) {
       console.log(`Continue mode: Reading latest conversation in directory`);
-    } else if (cleanedSessionId) {
-      console.log(`Session resuming with ID: ${cleanedSessionId}`);
     }
 
     const iterator = claudeQuery(queryOptions);
