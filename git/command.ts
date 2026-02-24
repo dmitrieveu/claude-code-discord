@@ -28,11 +28,11 @@ export const gitCommands = [
   
   new SlashCommandBuilder()
     .setName('worktree-remove')
-    .setDescription('Remove Git worktree')
+    .setDescription('Remove Git worktree (defaults to current branch if not main/master)')
     .addStringOption(option =>
       option.setName('branch')
-        .setDescription('Branch name of worktree to remove')
-        .setRequired(true)),
+        .setDescription('Branch name of worktree to remove (optional if on non-main branch)')
+        .setRequired(false)),
 
   new SlashCommandBuilder()
     .setName('worktree-bots')

@@ -187,7 +187,25 @@ export function createGitCommandHandlers(
     ['worktree-remove', {
       execute: async (ctx: InteractionContext) => {
         await ctx.deferReply();
-        const branch = ctx.getString('branch', true)!;
+        let branch = ctx.getString('branch');
+        if (!branch) {
+          // Default to current branch
+          const status = await gitHandlers.getStatus();
+          const currentBranch = status.branch;
+          if (currentBranch === "main" || currentBranch === "master") {
+            await ctx.editReply({
+              embeds: [{
+                color: 0xff0000,
+                title: "Cannot remove main/master worktree",
+                description:
+                  "You are on the main/master branch. Provide an explicit branch name to remove.",
+                timestamp: true,
+              }],
+            });
+            return;
+          }
+          branch = currentBranch;
+        }
         try {
           const result = await gitHandlers.onWorktreeRemove(ctx, branch);
           const isError = result.result.startsWith('Error:') || result.result.startsWith('Execution error:') || result.result.includes('fatal:');
