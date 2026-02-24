@@ -3,6 +3,9 @@
 # Bot runtime data (persistence files)
 .bot-data/
 
+# Hook prompt files (local only)
+hooks/*.md
+
 # Plan files (development only)
 plan/
 

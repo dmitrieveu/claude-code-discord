@@ -217,6 +217,19 @@ export async function createClaudeCodeBot(config: BotConfig) {
     );
   }
   
+  // Run startup hooks for worktree bots
+  if (Deno.env.get("WORKTREE_BOT") === "true") {
+    allHandlers.hookManager.executeHook("worktree", {
+      branch: branchName,
+      path: workDir,
+      repo: repoName,
+    }).catch((err) => {
+      console.warn(
+        `Hook worktree failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
   // Setup signal handlers for graceful shutdown
   setupSignalHandlers({
     managers,

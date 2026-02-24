@@ -243,6 +243,17 @@ export function createGitCommandHandlers(
               }]
             });
 
+            // Run worktree-remove hook (non-blocking)
+            handlers.hookManager.executeHook("worktree-remove", {
+              branch,
+              path: result.fullPath,
+              repo: deps.categoryName,
+            }).catch((err) => {
+              console.warn(
+                `Hook worktree-remove failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            });
+
             // Delete the Discord channel for this worktree after replying
             try {
               const client = deps.getDiscordClient();

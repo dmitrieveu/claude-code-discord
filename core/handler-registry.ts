@@ -27,6 +27,7 @@ import { helpCommand, createHelpHandlers } from "../help/index.ts";
 import { agentCommand, createAgentHandlers } from "../agent/index.ts";
 import { screenshotCommands, createScreenshotHandlers } from "../screenshot/index.ts";
 import { cleanSessionId, ClaudeSessionManager } from "../claude/index.ts";
+import { HookManager } from "../hooks/index.ts";
 
 import type { ShellManager } from "../shell/index.ts";
 import type { WorktreeBotManager } from "../git/index.ts";
@@ -129,6 +130,7 @@ export interface AllHandlers {
   help: ReturnType<typeof createHelpHandlers>;
   agent: ReturnType<typeof createAgentHandlers>;
   screenshot: ReturnType<typeof createScreenshotHandlers>;
+  hookManager: HookManager;
 }
 
 /**
@@ -446,6 +448,12 @@ export function createAllHandlers(
     workDir,
   });
 
+  const hookManager = new HookManager({
+    workDir,
+    sendClaudeMessages,
+    resetProgress,
+  });
+
   return {
     claude: claudeHandlers,
     enhancedClaude: enhancedClaudeHandlers,
@@ -459,6 +467,7 @@ export function createAllHandlers(
     help: helpHandlers,
     agent: agentHandlers,
     screenshot: screenshotHandlers,
+    hookManager,
   };
 }
 
