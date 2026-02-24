@@ -317,16 +317,9 @@ export function createClaudeSender(sender: DiscordSender) {
         continue;
       }
 
-      // Long text messages: store full text for file attachment on completion
-      if (msg.type === "text" && msg.content.trim().length > 1000) {
+      // Accumulate all assistant text for potential file attachment on completion
+      if (msg.type === "text" && msg.content.trim()) {
         state.fullTextMessages.push(msg.content.trim());
-        // Summary line goes into progress embed
-        const summaryLine = messageToSummaryLine(msg);
-        if (summaryLine) {
-          state.lines.push(summaryLine);
-          trimLines();
-        }
-        continue;
       }
 
       // Non-terminal messages: append to progress embed
@@ -462,8 +455,9 @@ export function createClaudeSender(sender: DiscordSender) {
       state.finished = true;
       await inflightEdit.catch(() => {});
 
-      // Attach full response as a text file if any assistant text was truncated
-      if (state.fullTextMessages.length > 0) {
+      // Attach full response as a text file if total assistant text exceeds 2000 chars
+      const totalTextLength = state.fullTextMessages.reduce((sum, t) => sum + t.length, 0);
+      if (totalTextLength > 2000) {
         const fullText = state.fullTextMessages.join("\n\n---\n\n");
         const encoder = new TextEncoder();
         messageContent.files = [{
