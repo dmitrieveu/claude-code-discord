@@ -191,6 +191,7 @@ interface ProgressState {
   editTimer: number | null;
   pendingEdit: boolean;
   finished: boolean;
+  fullTextMessages: string[];
 }
 
 // Create sendClaudeMessages function with dependency injection
@@ -205,10 +206,13 @@ export function createClaudeSender(sender: DiscordSender) {
     editTimer: null,
     pendingEdit: false,
     finished: false,
+    fullTextMessages: [],
   };
 
   // Serialize sendClaudeMessages calls to prevent interleaving
   let messageQueue: Promise<void> = Promise.resolve();
+  // Track in-flight flushEdit so completion can wait for it
+  let inflightEdit: Promise<void> = Promise.resolve();
 
   // Build the progress embed description from accumulated lines
   function buildProgressDescription(): string {
@@ -241,10 +245,10 @@ export function createClaudeSender(sender: DiscordSender) {
       clearTimeout(state.editTimer);
     }
 
-    state.editTimer = setTimeout(async () => {
+    state.editTimer = setTimeout(() => {
       state.editTimer = null;
       state.pendingEdit = false;
-      await flushEdit();
+      inflightEdit = flushEdit();
     }, EDIT_DEBOUNCE_MS) as unknown as number;
   }
 
@@ -284,6 +288,7 @@ export function createClaudeSender(sender: DiscordSender) {
     state.prompt = prompt || "";
     state.pendingEdit = false;
     state.finished = false;
+    state.fullTextMessages = [];
   }
 
   async function processMessages(messages: ClaudeMessage[]): Promise<void> {
@@ -312,43 +317,15 @@ export function createClaudeSender(sender: DiscordSender) {
         continue;
       }
 
-      // Long text messages: send as standalone message instead of cramming into progress embed
+      // Long text messages: store full text for file attachment on completion
       if (msg.type === "text" && msg.content.trim().length > 1000) {
-        // Flush pending progress edit first
-        if (state.pendingEdit && state.messageId) {
-          if (state.editTimer !== null) {
-            clearTimeout(state.editTimer);
-            state.editTimer = null;
-          }
-          await flushEdit();
+        state.fullTextMessages.push(msg.content.trim());
+        // Summary line goes into progress embed
+        const summaryLine = messageToSummaryLine(msg);
+        if (summaryLine) {
+          state.lines.push(summaryLine);
+          trimLines();
         }
-
-        const text = msg.content.trim();
-        // Discord message limit is 2000 chars; split if needed
-        const MAX_MSG_LENGTH = 1990;
-        if (text.length <= MAX_MSG_LENGTH) {
-          await sender.sendMessage({ content: text });
-        } else {
-          // Send in chunks at line boundaries
-          let remaining = text;
-          while (remaining.length > 0) {
-            let chunk: string;
-            if (remaining.length <= MAX_MSG_LENGTH) {
-              chunk = remaining;
-              remaining = "";
-            } else {
-              const cutoff = remaining.lastIndexOf("\n", MAX_MSG_LENGTH);
-              const splitAt = cutoff > MAX_MSG_LENGTH / 2 ? cutoff : MAX_MSG_LENGTH;
-              chunk = remaining.substring(0, splitAt);
-              remaining = remaining.substring(splitAt).trimStart();
-            }
-            await sender.sendMessage({ content: chunk });
-          }
-        }
-
-        // Add a short note in progress lines so the embed still references it
-        state.lines.push("\\> *(full response sent above)*");
-        trimLines();
         continue;
       }
 
@@ -475,7 +452,26 @@ export function createClaudeSender(sender: DiscordSender) {
 
     // For completion/failure messages, edit the existing progress message instead of sending new
     if (isCompletion || isFailure) {
+      // Cancel any pending debounced edit and wait for any in-flight edit to complete
+      // to prevent it from overwriting the final completion/failure state
+      if (state.editTimer !== null) {
+        clearTimeout(state.editTimer);
+        state.editTimer = null;
+      }
+      state.pendingEdit = false;
       state.finished = true;
+      await inflightEdit.catch(() => {});
+
+      // Attach full response as a text file if any assistant text was truncated
+      if (state.fullTextMessages.length > 0) {
+        const fullText = state.fullTextMessages.join("\n\n---\n\n");
+        const encoder = new TextEncoder();
+        messageContent.files = [{
+          path: encoder.encode(fullText),
+          name: "response.md",
+          description: "Full Claude response",
+        }];
+      }
     }
     if ((isCompletion || isFailure) && state.messageId) {
       try {

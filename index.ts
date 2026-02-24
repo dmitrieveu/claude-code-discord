@@ -245,7 +245,7 @@ export async function createClaudeCodeBot(config: BotConfig) {
 function buildDiscordPayload(
   content: MessageContent,
   // deno-lint-ignore no-explicit-any
-  discord: { EmbedBuilder: any; ActionRowBuilder: any; ButtonBuilder: any; ButtonStyle: any },
+  discord: { EmbedBuilder: any; ActionRowBuilder: any; ButtonBuilder: any; ButtonStyle: any; AttachmentBuilder: any },
   // deno-lint-ignore no-explicit-any
 ): any {
   const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = discord;
@@ -302,6 +302,14 @@ function buildDiscordPayload(
       });
       return actionRow;
     });
+  }
+
+  if (content.files) {
+    const { AttachmentBuilder } = discord;
+    payload.files = content.files.map(
+      // deno-lint-ignore no-explicit-any
+      (f: any) => new AttachmentBuilder(f.path, { name: f.name, description: f.description }),
+    );
   }
 
   return payload;

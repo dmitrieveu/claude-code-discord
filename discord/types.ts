@@ -19,8 +19,8 @@ export interface ComponentData {
 }
 
 export interface FileAttachment {
-  /** File path or URL */
-  path: string;
+  /** File path, URL, or Buffer content */
+  path: string | Uint8Array;
   /** Optional display name */
   name?: string;
   /** Optional description */
