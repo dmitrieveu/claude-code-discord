@@ -39,6 +39,13 @@ export class WorktreeBotManager {
       args.push("--user-id", botSettings.mentionUserId);
     }
 
+    // Verify the worktree directory exists before spawning
+    try {
+      await Deno.stat(fullPath);
+    } catch {
+      throw new Error(`Worktree directory does not exist: ${fullPath}`);
+    }
+
     const botProcess = new Deno.Command(Deno.execPath(), {
       args: ["run", "--allow-all", Deno.mainModule, ...args],
       cwd: fullPath,

@@ -1,5 +1,5 @@
 import { exec as execCallback } from "node:child_process";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
 import type { GitInfo, GitStatus, WorktreeListResult, WorktreeResult } from "./types.ts";
 import { 
@@ -155,6 +155,10 @@ export async function createWorktree(workDir: string, branch: string, ref?: stri
   if (!branchExists) {
     console.log(`[createWorktree] Branch check for '${branch}': not found (${branchCheckResult.slice(0, 80)})`);
   }
+
+  // Ensure parent directories exist (branch names with slashes like "test/test1"
+  // produce nested paths that git worktree add won't create on its own)
+  await Deno.mkdir(dirname(worktreeDir), { recursive: true });
 
   let result: string;
   if (branchExists) {
