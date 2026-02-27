@@ -107,6 +107,12 @@ export {
   createAllCommandHandlers,
 } from "./command-wrappers.ts";
 
+// Multi-repo orchestrator
+export {
+  type MultiRepoOrchestratorConfig,
+  MultiRepoOrchestrator,
+} from "./multi-repo-orchestrator.ts";
+
 // Git and Shell handlers
 export {
   type GitShellHandlerDeps,

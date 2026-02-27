@@ -504,7 +504,9 @@ if (import.meta.main) {
     const envCategoryName = Deno.env.get("CATEGORY_NAME");
     const envMentionUserId = Deno.env.get("USER_ID") || Deno.env.get("DEFAULT_MENTION_USER_ID");
     const envWorkDir = Deno.env.get("WORK_DIR");
-    
+    const envWorkDirs = Deno.env.get("WORK_DIRS");
+    const isMultiRepoChild = Deno.env.get("MULTI_REPO_CHILD") === "true";
+
     if (!discordToken || !applicationId) {
       console.error("╔═══════════════════════════════════════════════════════════╗");
       console.error("║  Error: Missing required configuration                    ║");
@@ -519,6 +521,25 @@ if (import.meta.main) {
       Deno.exit(1);
     }
     
+    // Multi-repo orchestrator mode
+    if (envWorkDirs && !isMultiRepoChild) {
+      const { MultiRepoOrchestrator } = await import("./core/multi-repo-orchestrator.ts");
+      const workDirs = envWorkDirs.split(",").map((d) => d.trim()).filter(Boolean);
+      if (workDirs.length === 0) {
+        console.error("WORK_DIRS is set but contains no valid paths");
+        Deno.exit(1);
+      }
+      console.log(`Multi-repo mode: ${workDirs.length} repositories`);
+      const orchestrator = new MultiRepoOrchestrator({
+        workDirs,
+        discordToken,
+        applicationId,
+        defaultMentionUserId: envMentionUserId,
+      });
+      await orchestrator.start();
+      Deno.exit(0);
+    }
+
     // Parse command line arguments
     const args = parseArgs(Deno.args);
     const categoryName = args.category || envCategoryName;
