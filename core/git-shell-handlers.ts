@@ -656,6 +656,7 @@ export function createUtilityCommandHandlers(
         const gitStatusInfo = await gitHandlers.getStatus();
         const runningCount = shellHandlers.onShellList(ctx).size;
         const worktreeStatus = gitHandlers.onWorktreeBots(ctx);
+        const pwdInfo = utilsHandlers.getPwd();
         
         await ctx.editReply({
           embeds: [{
@@ -666,7 +667,8 @@ export function createUtilityCommandHandlers(
               { name: 'Git Branch', value: gitStatusInfo.branch, inline: true },
               { name: 'Shell Processes', value: `${runningCount} running`, inline: true },
               { name: 'Worktree Bots', value: Deno.env.get("WORKTREE_BOT") === "true" ? "This is a worktree bot" : `${worktreeStatus.totalBots} running`, inline: true },
-              { name: 'Mentions', value: botSettings.mentionEnabled ? `Enabled (<@${botSettings.mentionUserId}>)` : 'Disabled', inline: true }
+              { name: 'Mentions', value: botSettings.mentionEnabled ? `Enabled (<@${botSettings.mentionUserId}>)` : 'Disabled', inline: true },
+              { name: 'Working Directory', value: `\`${pwdInfo.workDir}\``, inline: false }
             ],
             timestamp: true
           }]
