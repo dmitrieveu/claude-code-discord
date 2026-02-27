@@ -1,5 +1,7 @@
 Explain how to control the bot process (start, stop, restart, check status).
 
+IMPORTANT: The bot may be running active Claude sessions, shell commands, or other tasks for Discord users. Stopping or restarting the bot will interrupt all in-progress work. NEVER stop or restart the bot on your own initiative without confirming with the user first. Only proceed if the user explicitly asked to stop/restart.
+
 Include the following information:
 
 ## Commands
