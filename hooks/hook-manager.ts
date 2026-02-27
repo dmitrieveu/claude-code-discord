@@ -22,15 +22,19 @@ export interface HookManagerDeps {
   sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
   /** Function to reset progress state between sessions */
   resetProgress?: (prompt?: string, messageId?: string) => void;
+  /** Directory containing hook .md files (defaults to this module's directory) */
+  hooksDir?: string;
 }
 
 export class HookManager {
   private workDir: string;
+  private hooksDir: string;
   private sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
   private resetProgress?: (prompt?: string, messageId?: string) => void;
 
   constructor(deps: HookManagerDeps) {
     this.workDir = deps.workDir;
+    this.hooksDir = deps.hooksDir ?? import.meta.dirname!;
     this.sendClaudeMessages = deps.sendClaudeMessages;
     this.resetProgress = deps.resetProgress;
   }
@@ -45,7 +49,7 @@ export class HookManager {
     workDirOverride?: string,
   ): Promise<boolean> {
     const effectiveWorkDir = workDirOverride || this.workDir;
-    const hookPath = join(effectiveWorkDir, "hooks", `${eventName}.md`);
+    const hookPath = join(this.hooksDir, `${eventName}.md`);
 
     // Read hook file; silently return false if not found
     const content = await this.readHookFile(hookPath);
