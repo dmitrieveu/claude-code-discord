@@ -115,6 +115,19 @@ export function createGitCommandHandlers(
                   timestamp: true
                 }]
               });
+
+              // Run worktree hook in the new worktree's context (non-blocking)
+              if (result.isExisting !== true) {
+                handlers.hookManager.executeHook("worktree", {
+                  branch,
+                  path: result.fullPath,
+                  repo: deps.categoryName,
+                }, result.fullPath).catch((err) => {
+                  console.warn(
+                    `Hook worktree failed: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                });
+              }
             } catch (botError) {
               await ctx.editReply({
                 embeds: [{
