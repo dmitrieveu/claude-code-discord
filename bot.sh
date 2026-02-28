@@ -106,7 +106,7 @@ do_start() {
 
   # We're now running detached - actually start the bot
   echo "[$(date)] Starting bot process..." >> "$LOG_FILE"
-  exec deno run --allow-all "$SCRIPT_DIR/index.ts" "$@"
+  exec deno run --allow-all "$SCRIPT_DIR/index.ts" "$@" >> "$LOG_FILE" 2>&1
 }
 
 do_stop() {
@@ -182,7 +182,7 @@ do_restart() {
   
   # Start the new instance
   echo "[$(date)] Starting new bot instance..." >> "$LOG_FILE"
-  exec deno run --allow-all "$SCRIPT_DIR/index.ts" "$@"
+  exec deno run --allow-all "$SCRIPT_DIR/index.ts" "$@" >> "$LOG_FILE" 2>&1
 }
 
 do_status() {
