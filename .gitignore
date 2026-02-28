@@ -58,6 +58,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 dump.rdb
+orchestrator.log
+restart.log
 
 # System files
 .DS_Store
