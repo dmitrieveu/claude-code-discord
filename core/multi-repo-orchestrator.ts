@@ -38,9 +38,20 @@ export class MultiRepoOrchestrator {
   }
 
   async start(): Promise<void> {
-    console.log(
-      `Multi-repo orchestrator starting with ${this.config.workDirs.length} repositories`,
-    );
+    console.log("═══════════════════════════════════════════════════════════");
+    console.log("Multi-Repo Orchestrator Starting");
+    console.log("═══════════════════════════════════════════════════════════");
+    console.log(`Repositories: ${this.config.workDirs.length}`);
+    console.log("─────────────────────────────────────────────────────────────");
+    
+    // Preview all repositories and their channels
+    for (const workDir of this.config.workDirs) {
+      const dirName = basename(workDir);
+      const category = `claude-code-${dirName}`;
+      console.log(`  • ${dirName} → Discord category: ${category}`);
+      console.log(`    Path: ${workDir}`);
+    }
+    console.log("─────────────────────────────────────────────────────────────");
 
     this.setupSignalHandlers();
 

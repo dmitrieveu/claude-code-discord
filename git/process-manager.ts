@@ -210,6 +210,13 @@ export class WorktreeBotManager {
       return 0;
     }
 
+    console.log(`Discovering ${toSpawn.length} worktree(s) to respawn:`);
+    for (const wt of toSpawn) {
+      const branch = wt.branch || wt.path.split("/").pop() || "unknown";
+      const repoName = wt.path.split("/").slice(-2, -1)[0] || actualCategoryName;
+      console.log(`  • ${repoName}:${branch} → #${actualCategoryName}-${branch} (${wt.path})`);
+    }
+
     // Spawn all worktree bots in parallel to avoid blocking startup
     const results = await Promise.allSettled(
       toSpawn.map((wt) => {

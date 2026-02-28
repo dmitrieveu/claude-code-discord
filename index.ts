@@ -199,6 +199,19 @@ export async function createClaudeCodeBot(config: BotConfig) {
   // Create Discord sender for Claude messages
   claudeSenderObj = createClaudeSender(createDiscordSenderAdapter(bot));
 
+  // Log bot startup info
+  const isWorktreeBot = Deno.env.get("WORKTREE_BOT") === "true";
+  console.log("═══════════════════════════════════════════════════════════");
+  console.log(isWorktreeBot ? "Starting Worktree Bot" : "Starting Claude Code Discord Bot");
+  console.log("═══════════════════════════════════════════════════════════");
+  console.log(`Type: ${isWorktreeBot ? "Worktree Child Bot" : "Main Bot"}`);
+  console.log(`Work Dir: ${workDir}`);
+  console.log(`Repository: ${repoName}`);
+  console.log(`Branch: ${branchName}`);
+  console.log(`Discord Category: ${actualCategoryName}`);
+  console.log(`Channel: #${actualCategoryName}-${branchName}`);
+  console.log("─────────────────────────────────────────────────────────────");
+  
   // Re-spawn bots for existing worktrees (survives restart)
   try {
     const respawned = await worktreeBotManager.respawnExistingWorktrees({
@@ -574,6 +587,7 @@ if (import.meta.main) {
       defaultMentionUserId,
     });
     
+    console.log("═══════════════════════════════════════════════════════════");
     console.log("✓ Bot has started. Press Ctrl+C to stop.");
   } catch (error) {
     console.error("Failed to start bot:", error);
