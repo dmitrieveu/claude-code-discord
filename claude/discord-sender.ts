@@ -179,14 +179,17 @@ function messageToSummaryLine(msg: ClaudeMessage): string | null {
   }
 }
 
-const MAX_DESCRIPTION_LENGTH = 3800;
+const MAX_DESCRIPTION_LENGTH = 2000; // Discord's actual limit is ~4096 but we keep buffer
 const EDIT_DEBOUNCE_MS = 1500;
+const TRUNCATION_MARKER = "\n...\n";
 
 // State for progress tracking
 interface ProgressState {
   messageId: string | null;
   lines: string[];
+  fullProgressLog: string[]; // Never trimmed, used for file attachment
   trimmedCount: number;
+  wasTruncated: boolean; // Track if we've ever truncated
   prompt: string;
   editTimer: number | null;
   pendingEdit: boolean;
@@ -201,7 +204,9 @@ export function createClaudeSender(sender: DiscordSender) {
   const state: ProgressState = {
     messageId: null,
     lines: [],
+    fullProgressLog: [],
     trimmedCount: 0,
+    wasTruncated: false,
     prompt: "",
     editTimer: null,
     pendingEdit: false,
@@ -214,17 +219,46 @@ export function createClaudeSender(sender: DiscordSender) {
   // Track in-flight flushEdit so completion can wait for it
   let inflightEdit: Promise<void> = Promise.resolve();
 
-  // Build the progress embed description from accumulated lines
+  // Build the progress embed description from accumulated lines with smart truncation
   function buildProgressDescription(): string {
-    let desc = "";
-
-    if (state.trimmedCount > 0) {
-      desc += `*[... ${state.trimmedCount} earlier entries trimmed]*\n`;
+    let fullDesc = state.lines.join("\n\n");
+    
+    // If under the limit, return as-is
+    if (fullDesc.length <= MAX_DESCRIPTION_LENGTH) {
+      return fullDesc;
     }
-
-    desc += state.lines.join("\n\n");
-
-    return desc;
+    
+    // Smart truncation: keep first line and as much of the end as possible
+    state.wasTruncated = true;
+    
+    const firstLine = state.lines[0] || "";
+    const firstLineWithMarker = firstLine + TRUNCATION_MARKER;
+    
+    // Calculate how much space we have for the end content
+    const remainingSpace = MAX_DESCRIPTION_LENGTH - firstLineWithMarker.length - 50; // Buffer
+    
+    if (remainingSpace <= 0) {
+      // If even the first line is too long, just truncate it
+      return firstLine.substring(0, MAX_DESCRIPTION_LENGTH - 10) + "...";
+    }
+    
+    // Build from the end backwards until we run out of space
+    let endContent = "";
+    for (let i = state.lines.length - 1; i > 0; i--) {
+      const lineWithSeparator = (endContent ? "\n\n" : "") + state.lines[i];
+      if (endContent.length + lineWithSeparator.length <= remainingSpace) {
+        endContent = state.lines[i] + (endContent ? "\n\n" + endContent : "");
+      } else {
+        break;
+      }
+    }
+    
+    const truncatedLines = state.lines.length - 1 - endContent.split("\n\n").filter(l => l).length;
+    const truncationInfo = truncatedLines > 0 
+      ? `\n*[... ${truncatedLines} entries truncated ...]*\n`
+      : TRUNCATION_MARKER;
+    
+    return firstLineWithMarker + endContent;
   }
 
   // Trim old lines if description exceeds max length
@@ -284,7 +318,9 @@ export function createClaudeSender(sender: DiscordSender) {
     }
     state.messageId = messageId || null;
     state.lines = [];
+    state.fullProgressLog = [];
     state.trimmedCount = 0;
+    state.wasTruncated = false;
     state.prompt = prompt || "";
     state.pendingEdit = false;
     state.finished = false;
@@ -327,6 +363,7 @@ export function createClaudeSender(sender: DiscordSender) {
       if (!summaryLine) continue;
 
       state.lines.push(summaryLine);
+      state.fullProgressLog.push(summaryLine); // Always keep full history
       trimLines();
 
       // If no progress message yet, send one
@@ -455,16 +492,39 @@ export function createClaudeSender(sender: DiscordSender) {
       state.finished = true;
       await inflightEdit.catch(() => {});
 
-      // Attach full response as a text file if total assistant text exceeds 2000 chars
+      // Attach files if content was truncated or response is large
       const totalTextLength = state.fullTextMessages.reduce((sum, t) => sum + t.length, 0);
-      if (totalTextLength > 2000) {
-        const fullText = state.fullTextMessages.join("\n\n---\n\n");
+      const shouldAttachFiles = state.wasTruncated || totalTextLength > 2000;
+      
+      if (shouldAttachFiles) {
         const encoder = new TextEncoder();
-        messageContent.files = [{
-          path: encoder.encode(fullText),
-          name: "response.md",
-          description: "Full Claude response",
-        }];
+        const files = [];
+        
+        // Add full progress log if it was truncated
+        if (state.wasTruncated && state.fullProgressLog.length > 0) {
+          const fullProgressText = "# Claude Code Progress Log\n\n" + 
+            state.fullProgressLog.join("\n\n");
+          files.push({
+            path: encoder.encode(fullProgressText),
+            name: "progress.md",
+            description: "Complete progress log",
+          });
+        }
+        
+        // Add full Claude response if it's large
+        if (totalTextLength > 2000) {
+          const fullText = "# Claude Response\n\n" + 
+            state.fullTextMessages.join("\n\n---\n\n");
+          files.push({
+            path: encoder.encode(fullText),
+            name: "response.md",
+            description: "Full Claude response",
+          });
+        }
+        
+        if (files.length > 0) {
+          messageContent.files = files;
+        }
       }
     }
     if ((isCompletion || isFailure) && state.messageId) {
