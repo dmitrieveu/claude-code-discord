@@ -1,5 +1,6 @@
 import type { ClaudeMessage } from "./types.ts";
 import type { MessageContent, EmbedData, ComponentData } from "../discord/types.ts";
+import { Buffer } from "node:buffer";
 
 // Discord sender interface for dependency injection
 export interface DiscordSender {
@@ -505,7 +506,7 @@ export function createClaudeSender(sender: DiscordSender) {
           const fullProgressText = "# Claude Code Progress Log\n\n" + 
             state.fullProgressLog.join("\n\n");
           files.push({
-            path: encoder.encode(fullProgressText),
+            path: Buffer.from(encoder.encode(fullProgressText)),
             name: "progress.md",
             description: "Complete progress log",
           });
@@ -516,7 +517,7 @@ export function createClaudeSender(sender: DiscordSender) {
           const fullText = "# Claude Response\n\n" + 
             state.fullTextMessages.join("\n\n---\n\n");
           files.push({
-            path: encoder.encode(fullText),
+            path: Buffer.from(encoder.encode(fullText)),
             name: "response.md",
             description: "Full Claude response",
           });
@@ -530,7 +531,8 @@ export function createClaudeSender(sender: DiscordSender) {
     if ((isCompletion || isFailure) && state.messageId) {
       try {
         await sender.editMessage(state.messageId, messageContent);
-      } catch {
+      } catch (error) {
+        console.error("Failed to edit message:", error instanceof Error ? error.message : String(error));
         // Fallback to sending new if edit fails
         await sender.sendMessage(messageContent);
       }

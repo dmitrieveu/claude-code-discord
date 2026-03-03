@@ -11,6 +11,7 @@
 
 import {
   createDiscordBot,
+  sanitizeChannelName,
   type BotConfig,
   type InteractionContext,
   type CommandHandlers,
@@ -209,7 +210,7 @@ export async function createClaudeCodeBot(config: BotConfig) {
   console.log(`Repository: ${repoName}`);
   console.log(`Branch: ${branchName}`);
   console.log(`Discord Category: ${actualCategoryName}`);
-  console.log(`Channel: #${actualCategoryName}-${branchName}`);
+  console.log(`Channel: #${sanitizeChannelName(branchName)}`);
   console.log("─────────────────────────────────────────────────────────────");
   
   // Re-spawn bots for existing worktrees (survives restart)
