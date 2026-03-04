@@ -816,7 +816,7 @@ export function createHelpHandlers(deps: HelpHandlerDeps) {
             fields.push({ name: "📌 Notes", value: noteText, inline: false });
           }
           
-          await ctx.reply({
+          await ctx.editReply({
             embeds: [{
               color: 0x0099ff,
               title: help.title,
@@ -829,7 +829,7 @@ export function createHelpHandlers(deps: HelpHandlerDeps) {
         } else {
           // Command not found - show available commands
           const availableCommands = Object.keys(COMMAND_HELP).sort().join(', ');
-          await ctx.reply({
+          await ctx.editReply({
             embeds: [{
               color: 0xff6600,
               title: '❓ Command Not Found',
@@ -853,7 +853,7 @@ export function createHelpHandlers(deps: HelpHandlerDeps) {
         }
       } else {
         // Show general help with all commands
-        await ctx.reply({
+        await ctx.editReply({
           embeds: [{
             color: 0x00ff00,
             title: "🤖 Claude Code Discord Bot - Help",

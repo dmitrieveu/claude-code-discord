@@ -650,29 +650,38 @@ export function createUtilityCommandHandlers(
   return new Map([
     ['status', {
       execute: async (ctx: InteractionContext) => {
+        // Defer immediately to prevent timeout
         await ctx.deferReply();
-        const claudeController = getClaudeController();
-        const sessionStatus = claudeController ? "Running" : "Idle";
-        const gitStatusInfo = await gitHandlers.getStatus();
-        const runningCount = shellHandlers.onShellList(ctx).size;
-        const worktreeStatus = gitHandlers.onWorktreeBots(ctx);
-        const pwdInfo = utilsHandlers.getPwd();
         
-        await ctx.editReply({
-          embeds: [{
-            color: 0x00ffff,
-            title: 'Status',
-            fields: [
-              { name: 'Claude Code', value: sessionStatus, inline: true },
-              { name: 'Git Branch', value: gitStatusInfo.branch, inline: true },
-              { name: 'Shell Processes', value: `${runningCount} running`, inline: true },
-              { name: 'Worktree Bots', value: Deno.env.get("WORKTREE_BOT") === "true" ? "This is a worktree bot" : `${worktreeStatus.totalBots} running`, inline: true },
-              { name: 'Mentions', value: botSettings.mentionEnabled ? `Enabled (<@${botSettings.mentionUserId}>)` : 'Disabled', inline: true },
-              { name: 'Working Directory', value: `\`${pwdInfo.workDir}\``, inline: false }
-            ],
-            timestamp: true
-          }]
-        });
+        try {
+          const claudeController = getClaudeController();
+          const sessionStatus = claudeController ? "Running" : "Idle";
+          const gitStatusInfo = await gitHandlers.getStatus();
+          const runningCount = shellHandlers.onShellList(ctx).size;
+          const worktreeStatus = gitHandlers.onWorktreeBots(ctx);
+          const pwdInfo = utilsHandlers.getPwd();
+          
+          await ctx.editReply({
+            embeds: [{
+              color: 0x00ffff,
+              title: 'Status',
+              fields: [
+                { name: 'Claude Code', value: sessionStatus, inline: true },
+                { name: 'Git Branch', value: gitStatusInfo.branch, inline: true },
+                { name: 'Shell Processes', value: `${runningCount} running`, inline: true },
+                { name: 'Worktree Bots', value: Deno.env.get("WORKTREE_BOT") === "true" ? "This is a worktree bot" : `${worktreeStatus.totalBots} running`, inline: true },
+                { name: 'Mentions', value: botSettings.mentionEnabled ? `Enabled (<@${botSettings.mentionUserId}>)` : 'Disabled', inline: true },
+                { name: 'Working Directory', value: `\`${pwdInfo.workDir}\``, inline: false }
+              ],
+              timestamp: true
+            }]
+          });
+        } catch (error) {
+          console.error('Error getting status information:', error);
+          await ctx.editReply({
+            content: `Error getting status: ${error instanceof Error ? error.message : 'Unknown error'}`
+          });
+        }
       }
     }],
     ['pwd', {
@@ -726,6 +735,7 @@ export function createUtilityCommandHandlers(
     }],
     ['help', {
       execute: async (ctx: InteractionContext) => {
+        await ctx.deferReply();
         const commandName = ctx.getString('command');
         await helpHandlers.onHelp(ctx, commandName || undefined);
       }
