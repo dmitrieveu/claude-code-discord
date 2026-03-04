@@ -12,7 +12,7 @@ export interface CleanupContext {
   /** Callback to kill all running shell processes */
   killAllShellProcesses: () => void;
   /** Callback to kill all worktree bots */
-  killAllWorktreeBots: () => void;
+  killAllWorktreeBots: () => void | Promise<void>;
   /** AbortController for the Claude session, if active */
   getClaudeController: () => AbortController | null;
   /** Callback to send shutdown notification */
@@ -68,8 +68,11 @@ export function createShutdownHandler(
       // Stop all shell processes
       ctx.killAllShellProcesses();
       
-      // Kill all worktree bots
-      ctx.killAllWorktreeBots();
+      // Kill all worktree bots (may be async)
+      const killBotsResult = ctx.killAllWorktreeBots();
+      if (killBotsResult instanceof Promise) {
+        await killBotsResult;
+      }
       
       // Cancel Claude Code session if active
       const claudeController = ctx.getClaudeController();

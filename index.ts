@@ -9,6 +9,14 @@
  * @module index
  */
 
+// Initialize child IPC handler early if running as worktree bot
+// This ensures child processes exit when parent dies
+if (Deno.env.get("WORKTREE_BOT") === "true") {
+  const { initializeChildHandler } = await import("./process/child-handler.ts");
+  await initializeChildHandler();
+  console.log(`[Worktree Bot] IPC initialized, monitoring parent process`);
+}
+
 import {
   createDiscordBot,
   sanitizeChannelName,

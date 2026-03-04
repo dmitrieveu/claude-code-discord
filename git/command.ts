@@ -105,8 +105,8 @@ export function createGitHandlers(deps: GitHandlerDeps) {
     },
 
     // deno-lint-ignore no-explicit-any
-    onWorktreeKill(_ctx: any, path: string): { success: boolean; message: string } {
-      const success = worktreeBotManager.killWorktreeBot(path);
+    async onWorktreeKill(_ctx: any, path: string): Promise<{ success: boolean; message: string }> {
+      const success = await worktreeBotManager.killWorktreeBot(path);
       return {
         success,
         message: success ? 'Worktree bot killed successfully' : 'Worktree bot not found or failed to kill'
@@ -114,8 +114,8 @@ export function createGitHandlers(deps: GitHandlerDeps) {
     },
 
     // Kill all worktree bots (used during shutdown)
-    killAllWorktreeBots() {
-      worktreeBotManager.killAllWorktreeBots();
+    async killAllWorktreeBots() {
+      await worktreeBotManager.killAllWorktreeBots();
     },
     
     async getStatus() {

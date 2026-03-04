@@ -226,7 +226,7 @@ export function createGitCommandHandlers(
           // Kill the worktree bot if one is running for this path
           let botKilled = false;
           if (!isError && result.fullPath) {
-            const killResult = gitHandlers.onWorktreeKill(ctx, result.fullPath);
+            const killResult = await gitHandlers.onWorktreeKill(ctx, result.fullPath);
             botKilled = killResult.success;
           }
 
@@ -340,7 +340,7 @@ export function createGitCommandHandlers(
         await ctx.deferReply();
         const path = ctx.getString('path', true)!;
         try {
-          const result = gitHandlers.onWorktreeKill(ctx, path);
+          const result = await gitHandlers.onWorktreeKill(ctx, path);
           await ctx.editReply({
             embeds: [{
               color: result.success ? 0x00ff00 : 0xff0000,
@@ -716,7 +716,7 @@ export function createUtilityCommandHandlers(
         });
         
         shellHandlers.killAllProcesses();
-        gitHandlers.killAllWorktreeBots();
+        await gitHandlers.killAllWorktreeBots();
         
         const claudeController = getClaudeController();
         if (claudeController) {
