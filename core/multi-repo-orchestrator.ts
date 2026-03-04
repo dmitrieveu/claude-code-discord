@@ -110,8 +110,8 @@ export class MultiRepoOrchestrator {
     const command = new Deno.Command(Deno.execPath(), {
       args: ["run", "--allow-all", Deno.mainModule],
       env,
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "piped",
+      stderr: "piped",
     });
 
     const process = command.spawn();
@@ -126,7 +126,61 @@ export class MultiRepoOrchestrator {
     this.children.set(workDir, child);
     console.log(`Multi-repo orchestrator: spawned child for ${workDir} (category: ${category})`);
 
+    // Stream output from child process with prefix
+    this.streamChildOutput(dirName, process);
     this.monitorChild(workDir, process);
+  }
+
+  private async streamChildOutput(dirName: string, process: Deno.ChildProcess): Promise<void> {
+    const prefix = `[${dirName}]`;
+    
+    // Stream stdout
+    if (process.stdout) {
+      const reader = process.stdout.getReader();
+      const decoder = new TextDecoder();
+      
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split('\n');
+            for (const line of lines) {
+              if (line.trim()) {
+                console.log(`${prefix} ${line}`);
+              }
+            }
+          }
+        } catch (error) {
+          // Ignore stream errors when process terminates
+        }
+      })();
+    }
+    
+    // Stream stderr
+    if (process.stderr) {
+      const reader = process.stderr.getReader();
+      const decoder = new TextDecoder();
+      
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split('\n');
+            for (const line of lines) {
+              if (line.trim()) {
+                console.error(`${prefix} ${line}`);
+              }
+            }
+          }
+        } catch (error) {
+          // Ignore stream errors when process terminates
+        }
+      })();
+    }
   }
 
   private async monitorChild(workDir: string, process: Deno.ChildProcess): Promise<void> {
