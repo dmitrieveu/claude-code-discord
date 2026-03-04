@@ -27,6 +27,15 @@ export interface FileAttachment {
   description?: string;
 }
 
+export interface AttachmentData {
+  id: string;
+  url: string;
+  proxyUrl: string;
+  name: string;
+  size: number;
+  contentType?: string;
+}
+
 export interface MessageContent {
   content?: string;
   embeds?: EmbedData[];
@@ -45,6 +54,7 @@ export interface InteractionContext {
   getString(name: string, required?: boolean): string | null;
   getInteger(name: string, required?: boolean): number | null;
   getBoolean(name: string, required?: boolean): boolean | null;
+  getAttachment?(name: string, required?: boolean): AttachmentData | null;
 }
 
 export interface BotConfig {

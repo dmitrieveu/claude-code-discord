@@ -1,7 +1,7 @@
 // Discord utilities and components
 export { createDiscordBot } from "./bot.ts";
 export { sanitizeChannelName, splitText } from "./utils.ts";
-export { 
+export {
   createPaginatedEmbeds, 
   createPaginationButtons, 
   initializePagination, 

@@ -2,6 +2,8 @@ import type { ClaudeResponse, ClaudeMessage } from "./types.ts";
 import { sendToClaudeCode } from "./client.ts";
 import { convertToClaudeMessages } from "./message-converter.ts";
 import { SlashCommandBuilder } from "npm:discord.js@14.14.1";
+import { downloadAttachment, cleanupAttachments, formatAttachmentsForPrompt } from "../attachments/index.ts";
+import type { AttachmentInfo } from "../attachments/index.ts";
 
 // Discord command definitions
 export const claudeCommands = [
@@ -12,6 +14,10 @@ export const claudeCommands = [
       option.setName('prompt')
         .setDescription('Prompt for Claude Code')
         .setRequired(true))
+    .addAttachmentOption(option =>
+      option.setName('image')
+        .setDescription('Image to analyze (optional)')
+        .setRequired(false))
     .addStringOption(option =>
       option.setName('session_id')
         .setDescription('Session ID to continue (optional)')
@@ -87,7 +93,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
   return {
     // deno-lint-ignore no-explicit-any
-    async onClaude(ctx: any, prompt: string, sessionId?: string): Promise<ClaudeResponse> {
+    async onClaude(ctx: any, prompt: string, sessionId?: string, attachmentInfo?: AttachmentInfo): Promise<ClaudeResponse> {
       // Cancel any existing session
       const existingController = deps.getClaudeController();
       if (existingController) {
@@ -99,11 +105,39 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       const interactionValid = await deferAndInitProgress(ctx, prompt);
 
+      // Handle attachment if provided
+      let enhancedPrompt = prompt;
+      let attachmentPath: string | undefined;
+      
+      if (attachmentInfo) {
+        await sendClaudeMessages([{
+          type: "text",
+          content: `Downloading image: ${attachmentInfo.name}...`,
+        }]);
+        
+        const attachmentResult = await downloadAttachment(attachmentInfo, workDir);
+        
+        if (attachmentResult.success && attachmentResult.filePath) {
+          attachmentPath = attachmentResult.filePath;
+          enhancedPrompt = prompt + formatAttachmentsForPrompt([attachmentPath]);
+          
+          await sendClaudeMessages([{
+            type: "text",
+            content: `Image downloaded successfully: ${attachmentInfo.name}`,
+          }]);
+        } else {
+          await sendClaudeMessages([{
+            type: "text",
+            content: `⚠️ Failed to download image: ${attachmentResult.error}`,
+          }]);
+        }
+      }
+
       let result: ClaudeResponse;
       try {
         result = await sendToClaudeCode(
           workDir,
-          prompt,
+          enhancedPrompt,
           controller,
           sessionId,
           undefined, // onChunk callback not used
@@ -131,6 +165,13 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
+      
+      // Cleanup attachment if it was downloaded
+      if (attachmentPath) {
+        setTimeout(() => {
+          cleanupAttachments([attachmentPath]).catch(console.error);
+        }, 60000); // Clean up after 1 minute
+      }
 
       await sendClaudeMessages([{
         type: "system",
@@ -149,7 +190,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
     },
 
     // deno-lint-ignore no-explicit-any
-    async onClaudePlan(ctx: any, prompt: string, sessionId?: string): Promise<ClaudeResponse> {
+    async onClaudePlan(ctx: any, prompt: string, sessionId?: string, attachmentInfo?: AttachmentInfo): Promise<ClaudeResponse> {
       // Cancel any existing session
       const existingController = deps.getClaudeController();
       if (existingController) {
@@ -161,11 +202,39 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       const _interactionValid = await deferAndInitProgress(ctx, prompt, "Plan");
 
+      // Handle attachment if provided
+      let enhancedPrompt = prompt;
+      let attachmentPath: string | undefined;
+      
+      if (attachmentInfo) {
+        await sendClaudeMessages([{
+          type: "text",
+          content: `Downloading image: ${attachmentInfo.name}...`,
+        }]);
+        
+        const attachmentResult = await downloadAttachment(attachmentInfo, workDir);
+        
+        if (attachmentResult.success && attachmentResult.filePath) {
+          attachmentPath = attachmentResult.filePath;
+          enhancedPrompt = prompt + formatAttachmentsForPrompt([attachmentPath]);
+          
+          await sendClaudeMessages([{
+            type: "text",
+            content: `Image downloaded successfully: ${attachmentInfo.name}`,
+          }]);
+        } else {
+          await sendClaudeMessages([{
+            type: "text",
+            content: `⚠️ Failed to download image: ${attachmentResult.error}`,
+          }]);
+        }
+      }
+
       let result: ClaudeResponse;
       try {
         result = await sendToClaudeCode(
           workDir,
-          prompt,
+          enhancedPrompt,
           controller,
           sessionId,
           undefined, // onChunk callback not used
@@ -195,6 +264,13 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
+      
+      // Cleanup attachment if it was downloaded
+      if (attachmentPath) {
+        setTimeout(() => {
+          cleanupAttachments([attachmentPath]).catch(console.error);
+        }, 60000); // Clean up after 1 minute
+      }
 
       await sendClaudeMessages([{
         type: "system",

@@ -14,7 +14,7 @@ import type {
 import type { ClaudeMessage } from "../claude/index.ts";
 
 // Import command definitions
-import { claudeCommands, createClaudeHandlers } from "../claude/index.ts";
+import { claudeCommands, createClaudeHandlers, claudeImageCommand, createClaudeImageHandler } from "../claude/index.ts";
 import { enhancedClaudeCommands, createEnhancedClaudeHandlers } from "../claude/index.ts";
 import { additionalClaudeCommands, createAdditionalClaudeHandlers } from "../claude/additional-index.ts";
 import { advancedSettingsCommands, createAdvancedSettingsHandlers, type AdvancedBotSettings } from "../settings/index.ts";
@@ -119,6 +119,7 @@ export interface BotSettingsOps {
  */
 export interface AllHandlers {
   claude: ReturnType<typeof createClaudeHandlers>;
+  claudeImage: ReturnType<typeof createClaudeImageHandler>;
   enhancedClaude: ReturnType<typeof createEnhancedClaudeHandlers>;
   additionalClaude: ReturnType<typeof createAdditionalClaudeHandlers>;
   advancedSettings: ReturnType<typeof createAdvancedSettingsHandlers>;
@@ -361,6 +362,15 @@ export function createAllHandlers(
     sendClaudeMessages,
     resetProgress,
   });
+  
+  const claudeImageHandler = createClaudeImageHandler({
+    workDir,
+    getClaudeController: claudeSession.getController,
+    setClaudeController: claudeSession.setController,
+    setClaudeSessionId: claudeSession.setSessionId,
+    sendClaudeMessages,
+    resetProgress,
+  });
 
   const gitHandlers = createGitHandlers({
     workDir,
@@ -456,6 +466,7 @@ export function createAllHandlers(
 
   return {
     claude: claudeHandlers,
+    claudeImage: claudeImageHandler,
     enhancedClaude: enhancedClaudeHandlers,
     additionalClaude: additionalClaudeHandlers,
     advancedSettings: advancedSettingsHandlers,
@@ -479,6 +490,7 @@ export function createAllHandlers(
 export function getAllCommands() {
   return [
     ...claudeCommands,
+    claudeImageCommand,
     ...enhancedClaudeCommands,
     ...additionalClaudeCommands,
     ...advancedSettingsCommands,

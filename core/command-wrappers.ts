@@ -221,7 +221,7 @@ export function createClaudeCommandHandlers(
   messageHistory: MessageHistoryOps,
   getClaudeController: () => AbortController | null
 ): Map<string, { execute: (ctx: InteractionContext) => Promise<void>; handleButton?: (ctx: InteractionContext, customId: string) => Promise<void> }> {
-  const { claude: claudeHandlers, enhancedClaude: enhancedClaudeHandlers, additionalClaude: additionalClaudeHandlers } = handlers;
+  const { claude: claudeHandlers, claudeImage: claudeImageHandler, enhancedClaude: enhancedClaudeHandlers, additionalClaude: additionalClaudeHandlers } = handlers;
   const { addToHistory } = messageHistory;
 
   return new Map([
@@ -229,8 +229,21 @@ export function createClaudeCommandHandlers(
       execute: async (ctx: InteractionContext) => {
         const prompt = ctx.getString('prompt', true)!;
         const sessionId = ctx.getString('session_id');
+        const attachment = ctx.getAttachment?.('image');
         addToHistory(prompt);
-        await claudeHandlers.onClaude(ctx, prompt, sessionId || undefined);
+        
+        // Convert attachment to AttachmentInfo if present
+        let attachmentInfo = undefined;
+        if (attachment) {
+          attachmentInfo = {
+            url: attachment.url,
+            name: attachment.name,
+            size: attachment.size,
+            contentType: attachment.contentType,
+          };
+        }
+        
+        await claudeHandlers.onClaude(ctx, prompt, sessionId || undefined, attachmentInfo);
       },
       handleButton: async (ctx: InteractionContext, customId: string) => {
         if (customId.startsWith('expand:')) {
@@ -303,8 +316,26 @@ export function createClaudeCommandHandlers(
       execute: async (ctx: InteractionContext) => {
         const prompt = ctx.getString('prompt', true)!;
         const sessionId = ctx.getString('session_id');
+        const attachment = ctx.getAttachment?.('image');
         addToHistory(prompt);
-        await claudeHandlers.onClaudePlan(ctx, prompt, sessionId || undefined);
+        
+        // Convert attachment to AttachmentInfo if present
+        let attachmentInfo = undefined;
+        if (attachment) {
+          attachmentInfo = {
+            url: attachment.url,
+            name: attachment.name,
+            size: attachment.size,
+            contentType: attachment.contentType,
+          };
+        }
+        
+        await claudeHandlers.onClaudePlan(ctx, prompt, sessionId || undefined, attachmentInfo);
+      }
+    }],
+    ['claude-image', {
+      execute: async (ctx: InteractionContext) => {
+        await claudeImageHandler.execute(ctx);
       }
     }],
     ['continue', {

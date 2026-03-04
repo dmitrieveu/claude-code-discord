@@ -1,5 +1,6 @@
 // Claude Code integration exports
 export { claudeCommands, createClaudeHandlers } from "./command.ts";
+export { claudeImageCommand, createClaudeImageHandler } from "./claude-image-command.ts";
 export { cleanSessionId, sendToClaudeCode } from "./client.ts";
 export { createClaudeSender, expandableContent } from "./discord-sender.ts";
 export { convertToClaudeMessages } from "./message-converter.ts";
@@ -20,3 +21,4 @@ export type {
   ClaudeSession
 } from "./enhanced-client.ts";
 export type { EnhancedClaudeHandlerDeps } from "./enhanced-commands.ts";
+export type { ClaudeImageHandlerDeps } from "./claude-image-command.ts";

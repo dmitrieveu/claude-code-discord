@@ -22,7 +22,8 @@ import type {
   ButtonHandlers,
   MessageContent, 
   InteractionContext,
-  BotDependencies
+  BotDependencies,
+  AttachmentData
 } from "./types.ts";
 
 
@@ -220,6 +221,24 @@ export async function createDiscordBot(
         if (interaction.isCommand && interaction.isCommand()) {
           // deno-lint-ignore no-explicit-any
           return (interaction as any).options.getBoolean(name, required ?? false);
+        }
+        return null;
+      },
+      
+      getAttachment(name: string, required?: boolean): AttachmentData | null {
+        if (interaction.isCommand && interaction.isCommand()) {
+          // deno-lint-ignore no-explicit-any
+          const attachment = (interaction as any).options.getAttachment(name, required ?? false);
+          if (attachment) {
+            return {
+              id: attachment.id,
+              url: attachment.url,
+              proxyUrl: attachment.proxyURL,
+              name: attachment.name,
+              size: attachment.size,
+              contentType: attachment.contentType,
+            };
+          }
         }
         return null;
       }
