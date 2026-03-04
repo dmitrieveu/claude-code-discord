@@ -197,9 +197,23 @@ WORK_DIR=/path/to/project             # Working directory (default: current)
 
 > [!Note]
 > - In your application, go to the <kbd>Bot</kbd> section in the left sidebar
-> - Click <kbd>Add Bot</kbd>
+> - Click <kbd>Add Bot</kbd> (if you haven't already)
 > - Under <kbd>Token</kbd> click <kbd>Copy</kbd> to copy your bot token (keep this secure!)
-> - Click <kbd>Save Changes</kbd>
+> 
+> **⚠️ CRITICAL: Enable Message Content Intent for @bot mention commands:**
+> - Scroll down to the <kbd>Privileged Gateway Intents</kbd> section (below the Token section)
+> - You'll see three toggle switches:
+>   - PRESENCE INTENT (not needed)
+>   - SERVER MEMBERS INTENT (not needed)  
+>   - **MESSAGE CONTENT INTENT** ← **Toggle this ON** ✅
+> - The MESSAGE CONTENT INTENT toggle should be **blue/enabled**
+> - This allows the bot to:
+>   - Read message content in channels it can see
+>   - Detect when users mention the bot (@YourBot)
+>   - Process commands like `@YourBot show me git status`
+> - Without this, the bot can ONLY respond to slash commands (/claude, /git, etc.)
+> 
+> - Click <kbd>Save Changes</kbd> at the bottom
 > <img width="800" height="500" alt="image" src="https://github.com/user-attachments/assets/0621b5ed-c4b4-44e3-a3f6-fe678f6893c3" />
 
 
@@ -218,7 +232,10 @@ WORK_DIR=/path/to/project             # Working directory (default: current)
 > + | Send Messages
 > + | Use Slash Commands
 > + | Read Message History
+> + | View Channels
 > + | Embed Links
+> + | Attach Files
+> + | Manage Channels (for creating branch channels)
 > ```
 > Copy the generated URL and open it in your browser
 > Select your Discord server and authorize the bot
@@ -231,8 +248,13 @@ WORK_DIR=/path/to/project             # Working directory (default: current)
 ## Command List 
 > (45+ Commands)
 
-### Core Claude (3)
+### Core Claude (3 + Mention Commands)
 - `/claude`, `/continue`, `/claude-cancel`
+- **@bot mention commands** - Tag the bot to send commands naturally:
+  - `@bot show me git status`
+  - `@bot help me debug this error`
+  - `@bot shell ls -la`
+  - Any message mentioning the bot will be processed
 
 ### Enhanced Claude (4) 
 - `/claude-enhanced`, `/claude-models`, `/claude-sessions`, `/claude-context`

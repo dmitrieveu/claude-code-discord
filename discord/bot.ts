@@ -11,11 +11,13 @@ import {
   CommandInteraction,
   ButtonInteraction,
   TextChannel,
-  EmbedBuilder
+  EmbedBuilder,
+  Message
 } from "npm:discord.js@14.14.1";
 
 import { sanitizeChannelName } from "./utils.ts";
 import { handlePaginationInteraction } from "./pagination.ts";
+import { handleMentionMessage } from "./mention-handler.ts";
 import type { 
   BotConfig, 
   CommandHandlers, 
@@ -108,8 +110,15 @@ export async function createDiscordBot(
     mentionUserId: config.defaultMentionUserId || null,
   };
   
+  // Create client with necessary intents
+  // Note: GuildMessages and MessageContent intents are required for mention commands
+  // The Message Content Intent must be enabled in Discord Developer Portal
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
   });
   
   // Use commands from dependencies
@@ -490,8 +499,33 @@ export async function createDiscordBot(
     }
   });
   
-  // Login
-  await client.login(discordToken);
+  client.on(Events.MessageCreate, async (message) => {
+    // Ignore bot messages
+    if (message.author.bot) return;
+    
+    // Only process messages in our channel
+    if (!myChannel || message.channelId !== myChannel.id) return;
+    
+    // Handle mention messages
+    await handleMentionMessage(message as Message, client, handlers);
+  });
+  
+  // Login with error handling for intent issues
+  try {
+    await client.login(discordToken);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('disallowed intents')) {
+      console.error('\n⚠️  ERROR: Message Content Intent is not enabled for this bot!');
+      console.error('📋 To enable mention commands (@bot <message>), you must:');
+      console.error('   1. Go to https://discord.com/developers/applications');
+      console.error('   2. Select your application');
+      console.error('   3. Go to the "Bot" section');
+      console.error('   4. Enable "MESSAGE CONTENT INTENT" under Privileged Gateway Intents');
+      console.error('   5. Save changes and restart the bot\n');
+      console.error('Note: The bot will still work with slash commands, but mention commands will not be available.\n');
+    }
+    throw error;
+  }
   
   // Return bot control functions
   return {

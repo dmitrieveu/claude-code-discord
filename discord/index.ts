@@ -1,6 +1,7 @@
 // Discord utilities and components
 export { createDiscordBot } from "./bot.ts";
 export { sanitizeChannelName, splitText } from "./utils.ts";
+export { handleMentionMessage, parseMentionCommand, createMessageContext } from "./mention-handler.ts";
 export {
   createPaginatedEmbeds, 
   createPaginationButtons, 
