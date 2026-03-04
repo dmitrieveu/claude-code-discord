@@ -155,14 +155,15 @@ export function createMessageContext(message: Message, parsedPrompt?: string) {
         return edited.id;
       }
       
-      // Otherwise, send a new message
-      const msg = await message.channel.send({
+      // Otherwise, send a new message and save it as the initial reply
+      // This ensures subsequent editReply calls will edit this message
+      initialReplyMessage = await message.channel.send({
         content: content.content || undefined,
         embeds: content.embeds || undefined,
         components: content.components || undefined,
         files: content.files || undefined,
       });
-      return msg.id;
+      return initialReplyMessage.id;
     },
     
     // deno-lint-ignore no-explicit-any
