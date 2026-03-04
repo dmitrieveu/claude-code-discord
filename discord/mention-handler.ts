@@ -49,7 +49,8 @@ const COMMAND_ROUTES: Record<string, { handler: string; extractPrompt: (content:
  */
 export function parseMentionCommand(
   message: Message,
-  client: Client
+  client: Client,
+  handlers?: CommandHandlers
 ): { command: string; prompt: string; hasAttachment: boolean } | null {
   // Check if the bot is mentioned
   if (!message.mentions.has(client.user!.id)) {
@@ -68,6 +69,25 @@ export function parseMentionCommand(
   // Check for specific command patterns
   const lowerContent = content.toLowerCase();
   
+  // First check if it starts with a slash command
+  if (content.startsWith('/') && handlers) {
+    // Extract the command name (everything before the first space or end of string)
+    const slashMatch = content.match(/^\/(\S+)(?:\s+(.*))?$/);
+    if (slashMatch) {
+      const commandName = slashMatch[1].toLowerCase();
+      const args = slashMatch[2] || "";
+      
+      // Check if this command exists in handlers
+      if (handlers.has(commandName)) {
+        return {
+          command: commandName,
+          prompt: args,
+          hasAttachment: message.attachments.size > 0,
+        };
+      }
+    }
+  }
+  
   // Check each route pattern
   for (const [pattern, config] of Object.entries(COMMAND_ROUTES)) {
     if (lowerContent.startsWith(pattern)) {
@@ -79,9 +99,9 @@ export function parseMentionCommand(
     }
   }
   
-  // Default to claude command with the entire content as prompt
+  // Default to continue command with the entire content as prompt
   return {
-    command: "claude",
+    command: "continue",
     prompt: content,
     hasAttachment: message.attachments.size > 0,
   };
@@ -221,7 +241,7 @@ export async function handleMentionMessage(
   handlers: CommandHandlers
 ): Promise<void> {
   // Parse the mention command
-  const parsed = parseMentionCommand(message, client);
+  const parsed = parseMentionCommand(message, client, handlers);
   if (!parsed) {
     return;
   }
@@ -229,14 +249,14 @@ export async function handleMentionMessage(
   // Get the appropriate handler
   const handler = handlers.get(parsed.command);
   if (!handler) {
-    // If no specific handler found, default to claude
-    const claudeHandler = handlers.get('claude');
-    if (claudeHandler) {
+    // If no specific handler found, default to continue
+    const continueHandler = handlers.get('continue');
+    if (continueHandler) {
       const ctx = createMessageContext(message, parsed.prompt);
       try {
-        await claudeHandler.execute(ctx);
+        await continueHandler.execute(ctx);
       } catch (error) {
-        console.error(`Error handling claude command from mention:`, error);
+        console.error(`Error handling continue command from mention:`, error);
         try {
           await message.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error occurred"}`);
         } catch {
