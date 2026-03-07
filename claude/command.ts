@@ -289,7 +289,7 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
     },
 
     // deno-lint-ignore no-explicit-any
-    async onContinue(ctx: any, prompt?: string): Promise<ClaudeResponse> {
+    async onContinue(ctx: any, prompt?: string, attachmentInfo?: AttachmentInfo): Promise<ClaudeResponse> {
       // Cancel any existing session
       const existingController = deps.getClaudeController();
       if (existingController) {
@@ -299,9 +299,36 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
       const controller = new AbortController();
       deps.setClaudeController(controller);
 
-      const actualPrompt = prompt || "Please continue.";
+      let actualPrompt = prompt || "Please continue.";
 
       const _interactionValid = await deferAndInitProgress(ctx, actualPrompt);
+
+      // Handle attachment if provided
+      let attachmentPath: string | undefined;
+      
+      if (attachmentInfo) {
+        await sendClaudeMessages([{
+          type: "text",
+          content: `Downloading image: ${attachmentInfo.name}...`,
+        }]);
+        
+        const attachmentResult = await downloadAttachment(attachmentInfo, workDir);
+        
+        if (attachmentResult.success && attachmentResult.filePath) {
+          attachmentPath = attachmentResult.filePath;
+          actualPrompt = actualPrompt + formatAttachmentsForPrompt([attachmentPath]);
+          
+          await sendClaudeMessages([{
+            type: "text",
+            content: `Image downloaded successfully: ${attachmentInfo.name}`,
+          }]);
+        } else {
+          await sendClaudeMessages([{
+            type: "text",
+            content: `⚠️ Failed to download image: ${attachmentResult.error}`,
+          }]);
+        }
+      }
 
       let result: ClaudeResponse;
       try {
@@ -335,6 +362,13 @@ export function createClaudeHandlers(deps: ClaudeHandlerDeps) {
 
       deps.setClaudeSessionId(result.sessionId);
       deps.setClaudeController(null);
+      
+      // Cleanup attachment if it was downloaded
+      if (attachmentPath) {
+        setTimeout(() => {
+          cleanupAttachments([attachmentPath]).catch(console.error);
+        }, 60000); // Clean up after 1 minute
+      }
 
       await sendClaudeMessages([{
         type: "system",

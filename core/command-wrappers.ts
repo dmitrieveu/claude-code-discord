@@ -341,8 +341,21 @@ export function createClaudeCommandHandlers(
     ['continue', {
       execute: async (ctx: InteractionContext) => {
         const prompt = ctx.getString('prompt');
+        const attachment = ctx.getAttachment?.('image') || ctx.getAttachment?.('file');
         if (prompt) addToHistory(prompt);
-        await claudeHandlers.onContinue(ctx, prompt || undefined);
+        
+        // Convert attachment to AttachmentInfo if present
+        let attachmentInfo = undefined;
+        if (attachment) {
+          attachmentInfo = {
+            url: attachment.url,
+            name: attachment.name,
+            size: attachment.size,
+            contentType: attachment.contentType,
+          };
+        }
+        
+        await claudeHandlers.onContinue(ctx, prompt || undefined, attachmentInfo);
       }
     }],
     ['continue-plan', {
