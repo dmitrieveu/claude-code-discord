@@ -65,9 +65,21 @@ export function convertToClaudeMessages(jsonData: SDKMessage): ClaudeMessage[] {
         .filter((c: any) => c.type === 'tool_result');
       
       for (const result of toolResults) {
+        // Check if this is a Playwright screenshot result
+        const toolUseId = result.tool_use_id;
+        const isScreenshot = jsonData.message?.content?.some((c: any) => 
+          c.type === 'tool_use' && 
+          c.id === toolUseId && 
+          c.name === 'mcp__playwright__browser_take_screenshot'
+        );
+        
         messages.push({
           type: 'tool_result',
-          content: result.content || JSON.stringify(result, null, 2)
+          content: result.content || JSON.stringify(result, null, 2),
+          metadata: isScreenshot ? { 
+            ...result,
+            isPlaywrightScreenshot: true 
+          } : result
         });
       }
       

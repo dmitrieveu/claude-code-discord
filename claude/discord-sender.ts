@@ -1,6 +1,8 @@
 import type { ClaudeMessage } from "./types.ts";
 import type { MessageContent, EmbedData, ComponentData } from "../discord/types.ts";
 import { Buffer } from "node:buffer";
+import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 // Discord sender interface for dependency injection
 export interface DiscordSender {
@@ -144,6 +146,12 @@ function messageToSummaryLine(msg: ClaudeMessage): string | null {
         return `**Task** \u2014 ${desc}`;
       }
 
+      // Special handling for Playwright screenshot tool
+      if (toolName === "mcp__playwright__browser_take_screenshot") {
+        const filename = msg.metadata?.input?.filename || "screenshot";
+        return `**Screenshot** \u2014 \`${filename}\``;
+      }
+
       // Generic tool
       const inputStr = JSON.stringify(msg.metadata?.input || {});
       const preview = inputStr.length > 80 ? inputStr.substring(0, 80) + "..." : inputStr;
@@ -196,6 +204,7 @@ interface ProgressState {
   pendingEdit: boolean;
   finished: boolean;
   fullTextMessages: string[];
+  screenshotFiles: string[]; // Track screenshot files created during session
 }
 
 // Create sendClaudeMessages function with dependency injection
@@ -213,6 +222,7 @@ export function createClaudeSender(sender: DiscordSender) {
     pendingEdit: false,
     finished: false,
     fullTextMessages: [],
+    screenshotFiles: [],
   };
 
   // Serialize sendClaudeMessages calls to prevent interleaving
@@ -326,6 +336,7 @@ export function createClaudeSender(sender: DiscordSender) {
     state.pendingEdit = false;
     state.finished = false;
     state.fullTextMessages = [];
+    state.screenshotFiles = [];
   }
 
   async function processMessages(messages: ClaudeMessage[]): Promise<void> {
@@ -357,6 +368,27 @@ export function createClaudeSender(sender: DiscordSender) {
       // Accumulate all assistant text for potential file attachment on completion
       if (msg.type === "text" && msg.content.trim()) {
         state.fullTextMessages.push(msg.content.trim());
+      }
+
+      // Track screenshot files from Playwright tools
+      if (msg.type === "tool_use" && msg.metadata?.name === "mcp__playwright__browser_take_screenshot") {
+        const filename = msg.metadata?.input?.filename;
+        if (filename && typeof filename === "string") {
+          // Store the screenshot file path for later attachment
+          state.screenshotFiles.push(filename);
+        }
+      }
+
+      // Also check tool results for screenshot file paths
+      if (msg.type === "tool_result" && msg.content) {
+        // Check if the tool result mentions a saved screenshot file
+        const screenshotMatch = msg.content.match(/(?:Screenshot saved to|Saved screenshot as):?\s*(.+\.(?:png|jpeg|jpg))/i);
+        if (screenshotMatch && screenshotMatch[1]) {
+          const filename = screenshotMatch[1].trim();
+          if (!state.screenshotFiles.includes(filename)) {
+            state.screenshotFiles.push(filename);
+          }
+        }
       }
 
       // Non-terminal messages: append to progress embed
@@ -493,11 +525,12 @@ export function createClaudeSender(sender: DiscordSender) {
       state.finished = true;
       await inflightEdit.catch(() => {});
 
-      // Attach files if content was truncated or response is large
+      // Attach files if content was truncated, response is large, or screenshots were taken
       const totalTextLength = state.fullTextMessages.reduce((sum, t) => sum + t.length, 0);
-      const shouldAttachFiles = state.wasTruncated || totalTextLength > 2000;
+      const shouldAttachTextFiles = state.wasTruncated || totalTextLength > 2000;
+      const hasScreenshots = state.screenshotFiles.length > 0;
       
-      if (shouldAttachFiles) {
+      if (shouldAttachTextFiles || hasScreenshots) {
         const encoder = new TextEncoder();
         const files = [];
         
@@ -521,6 +554,33 @@ export function createClaudeSender(sender: DiscordSender) {
             name: "response.md",
             description: "Full Claude response",
           });
+        }
+        
+        // Add screenshot files if any were created
+        if (hasScreenshots) {
+          for (const screenshotFile of state.screenshotFiles) {
+            try {
+              // Resolve the path relative to the working directory
+              const workDir = Deno.env.get("WORK_DIR") || Deno.cwd();
+              const fullPath = resolve(workDir, screenshotFile);
+              
+              // Check if the file exists before trying to attach it
+              if (existsSync(fullPath)) {
+                // Read the file data as Buffer for Discord attachment
+                const fileData = await Deno.readFile(fullPath);
+                files.push({
+                  path: Buffer.from(fileData),
+                  name: screenshotFile.split('/').pop() || 'screenshot.png',
+                  description: "Screenshot from Playwright",
+                });
+                console.log(`Attaching screenshot: ${fullPath}`);
+              } else {
+                console.warn(`Screenshot file not found: ${fullPath}`);
+              }
+            } catch (error) {
+              console.error(`Failed to attach screenshot ${screenshotFile}:`, error);
+            }
+          }
         }
         
         if (files.length > 0) {
