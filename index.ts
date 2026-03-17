@@ -120,12 +120,22 @@ export async function createClaudeCodeBot(config: BotConfig) {
   let claudeSenderObj: {
     sendClaudeMessages: (messages: ClaudeMessage[]) => Promise<void>;
     resetProgress: (prompt?: string, messageId?: string) => void;
+    logSummary?: () => void;
   } | null = null;
 
   // Create sendClaudeMessages function that uses the sender when available
   const sendClaudeMessages = async (messages: ClaudeMessage[]) => {
     if (claudeSenderObj) {
       await claudeSenderObj.sendClaudeMessages(messages);
+      
+      // Log debug summary when we see a completion or failure message
+      const hasTerminalMessage = messages.some(m => 
+        m.type === "system" && 
+        (m.metadata?.subtype === "completion" || m.metadata?.subtype === "failure")
+      );
+      if (hasTerminalMessage && claudeSenderObj.logSummary) {
+        claudeSenderObj.logSummary();
+      }
     }
   };
 

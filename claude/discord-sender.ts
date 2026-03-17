@@ -98,12 +98,18 @@ function shouldSkipMessage(msg: ClaudeMessage, skipMessageTypes: Set<string>): b
 
 // Convert a ClaudeMessage into a compact one-line summary for the progress embed
 function messageToSummaryLine(msg: ClaudeMessage): string | null {
+  console.log(`[DEBUG] Processing message type: ${msg.type}, subtype: ${msg.metadata?.subtype || 'none'}, content length: ${msg.content?.length || 0}`);
   switch (msg.type) {
     case "text": {
       const text = msg.content.trim();
-      if (!text) return null;
+      if (!text) {
+        console.log(`[DEBUG] Text message empty after trim, skipping`);
+        return null;
+      }
       // Show more of assistant text - up to 1800 chars to fit within MAX_DESCRIPTION_LENGTH
-      const preview = text.length > 1800 ? text.substring(0, 1800) + "..." : text;
+      const wasTruncated = text.length > 1800;
+      const preview = wasTruncated ? text.substring(0, 1800) + "..." : text;
+      console.log(`[DEBUG] Text message: original=${text.length} chars, truncated=${wasTruncated}, preview=${preview.length} chars`);
       return `\\> ${preview}`;
     }
 
@@ -234,12 +240,16 @@ export function createClaudeSender(sender: DiscordSender) {
   function buildProgressDescription(): string {
     let fullDesc = state.lines.join("\n\n");
     
+    console.log(`[DEBUG] Building description: ${state.lines.length} lines, ${fullDesc.length} chars, MAX=${MAX_DESCRIPTION_LENGTH}`);
+    
     // If under the limit, return as-is
     if (fullDesc.length <= MAX_DESCRIPTION_LENGTH) {
+      console.log(`[DEBUG] Description fits within limit, returning as-is`);
       return fullDesc;
     }
     
     // Smart truncation: keep first line and as much of the end as possible
+    console.log(`[DEBUG] Description exceeds limit, applying smart truncation`);
     state.wasTruncated = true;
     
     const firstLine = state.lines[0] || "";
@@ -274,11 +284,16 @@ export function createClaudeSender(sender: DiscordSender) {
 
   // Trim old lines if description exceeds max length
   function trimLines(): void {
+    const initialLines = state.lines.length;
     while (state.lines.length > 1) {
       const desc = buildProgressDescription();
       if (desc.length <= MAX_DESCRIPTION_LENGTH) break;
-      state.lines.shift();
+      const removedLine = state.lines.shift();
       state.trimmedCount++;
+      console.log(`[DEBUG] Trimmed line ${state.trimmedCount}: ${removedLine?.substring(0, 50)}...`);
+    }
+    if (state.trimmedCount > initialLines - state.lines.length) {
+      console.log(`[DEBUG] Trimmed ${state.trimmedCount} total lines, ${state.lines.length} remain`);
     }
   }
 
@@ -299,7 +314,11 @@ export function createClaudeSender(sender: DiscordSender) {
 
   // Immediately flush the current progress state to Discord
   async function flushEdit(): Promise<void> {
-    if (!state.messageId || state.finished) return;
+    if (!state.messageId || state.finished) {
+      console.log(`[DEBUG] Skipping flush: messageId=${state.messageId}, finished=${state.finished}`);
+      return;
+    }
+    console.log(`[DEBUG] Flushing edit to Discord for message: ${state.messageId}`);
 
     const description = buildProgressDescription();
 
@@ -323,6 +342,7 @@ export function createClaudeSender(sender: DiscordSender) {
   // Reset progress state (call before each new session)
   // If messageId is provided, reuse that message for progress updates instead of creating a new one
   function resetProgress(prompt?: string, messageId?: string): void {
+    console.log(`[DEBUG] === Resetting progress state === prompt length: ${prompt?.length || 0}, reusing messageId: ${messageId || 'none'}`);
     if (state.editTimer !== null) {
       clearTimeout(state.editTimer);
       state.editTimer = null;
@@ -340,13 +360,16 @@ export function createClaudeSender(sender: DiscordSender) {
   }
 
   async function processMessages(messages: ClaudeMessage[]): Promise<void> {
+    console.log(`[DEBUG] Processing batch of ${messages.length} messages`);
     for (const msg of messages) {
+      console.log(`[DEBUG] Message ${messages.indexOf(msg) + 1}/${messages.length}: type=${msg.type}, subtype=${msg.metadata?.subtype || 'none'}`);
       // Never skip completion/failure messages — they control the embed state
       const isInternalSystem = msg.type === "system" &&
         (msg.metadata?.subtype === "completion" || msg.metadata?.subtype === "failure");
 
       // Skip messages if their type or type:subtype is in the skip list
       if (!isInternalSystem && shouldSkipMessage(msg, skipMessageTypes)) {
+        console.log(`[DEBUG] Skipping message due to skip list`);
         continue;
       }
 
@@ -367,7 +390,9 @@ export function createClaudeSender(sender: DiscordSender) {
 
       // Accumulate all assistant text for potential file attachment on completion
       if (msg.type === "text" && msg.content.trim()) {
-        state.fullTextMessages.push(msg.content.trim());
+        const trimmedContent = msg.content.trim();
+        state.fullTextMessages.push(trimmedContent);
+        console.log(`[DEBUG] Accumulated text message: ${trimmedContent.length} chars, total messages: ${state.fullTextMessages.length}`);
       }
 
       // Track screenshot files from Playwright tools
@@ -376,6 +401,7 @@ export function createClaudeSender(sender: DiscordSender) {
         if (filename && typeof filename === "string") {
           // Store the screenshot file path for later attachment
           state.screenshotFiles.push(filename);
+          console.log(`[DEBUG] Detected screenshot tool use: ${filename}`);
         }
       }
 
@@ -393,14 +419,19 @@ export function createClaudeSender(sender: DiscordSender) {
 
       // Non-terminal messages: append to progress embed
       const summaryLine = messageToSummaryLine(msg);
-      if (!summaryLine) continue;
+      if (!summaryLine) {
+        console.log(`[DEBUG] No summary line generated, skipping`);
+        continue;
+      }
 
       state.lines.push(summaryLine);
       state.fullProgressLog.push(summaryLine); // Always keep full history
+      console.log(`[DEBUG] Added summary line: ${summaryLine.length} chars, total lines: ${state.lines.length}, full log: ${state.fullProgressLog.length}`);
       trimLines();
 
       // If no progress message yet, send one
       if (!state.messageId) {
+        console.log(`[DEBUG] Creating initial progress message`);
         const description = buildProgressDescription();
         const msgId = await sender.sendMessage({
           embeds: [{
@@ -411,8 +442,10 @@ export function createClaudeSender(sender: DiscordSender) {
           }],
         });
         state.messageId = msgId || null;
+        console.log(`[DEBUG] Created progress message with ID: ${state.messageId}`);
       } else {
         // Schedule a debounced edit
+        console.log(`[DEBUG] Scheduling debounced edit for existing message: ${state.messageId}`);
         scheduleEdit();
       }
     }
@@ -427,6 +460,8 @@ export function createClaudeSender(sender: DiscordSender) {
   async function sendSystemMessage(msg: ClaudeMessage): Promise<void> {
     const isCompletion = msg.metadata?.subtype === "completion";
     const isFailure = msg.metadata?.subtype === "failure";
+    
+    console.log(`[DEBUG] System message: subtype=${msg.metadata?.subtype}, isCompletion=${isCompletion}, isFailure=${isFailure}`);
 
     const embedData: EmbedData = {
       color: isCompletion ? 0x00ff00 : isFailure ? 0xff0000 : 0xaaaaaa,
@@ -515,6 +550,7 @@ export function createClaudeSender(sender: DiscordSender) {
 
     // For completion/failure messages, edit the existing progress message instead of sending new
     if (isCompletion || isFailure) {
+      console.log(`[DEBUG] Handling ${isCompletion ? 'completion' : 'failure'} message, canceling pending edits`);
       // Cancel any pending debounced edit and wait for any in-flight edit to complete
       // to prevent it from overwriting the final completion/failure state
       if (state.editTimer !== null) {
@@ -530,6 +566,8 @@ export function createClaudeSender(sender: DiscordSender) {
       const shouldAttachTextFiles = state.wasTruncated || totalTextLength > 2000;
       const hasScreenshots = state.screenshotFiles.length > 0;
       
+      console.log(`[DEBUG] Completion check - wasTruncated: ${state.wasTruncated}, totalTextLength: ${totalTextLength}, shouldAttachTextFiles: ${shouldAttachTextFiles}, screenshots: ${state.screenshotFiles.length}`);
+      
       if (shouldAttachTextFiles || hasScreenshots) {
         const encoder = new TextEncoder();
         const files = [];
@@ -538,6 +576,7 @@ export function createClaudeSender(sender: DiscordSender) {
         if (state.wasTruncated && state.fullProgressLog.length > 0) {
           const fullProgressText = "# Claude Code Progress Log\n\n" + 
             state.fullProgressLog.join("\n\n");
+          console.log(`[DEBUG] Attaching progress.md: ${fullProgressText.length} chars, ${state.fullProgressLog.length} entries`);
           files.push({
             path: Buffer.from(encoder.encode(fullProgressText)),
             name: "progress.md",
@@ -549,6 +588,7 @@ export function createClaudeSender(sender: DiscordSender) {
         if (totalTextLength > 2000) {
           const fullText = "# Claude Response\n\n" + 
             state.fullTextMessages.join("\n\n---\n\n");
+          console.log(`[DEBUG] Attaching response.md: ${fullText.length} chars, ${state.fullTextMessages.length} text messages`);
           files.push({
             path: Buffer.from(encoder.encode(fullText)),
             name: "response.md",
@@ -573,34 +613,49 @@ export function createClaudeSender(sender: DiscordSender) {
                   name: screenshotFile.split('/').pop() || 'screenshot.png',
                   description: "Screenshot from Playwright",
                 });
-                console.log(`Attaching screenshot: ${fullPath}`);
+                console.log(`[DEBUG] Attaching screenshot: ${fullPath}, size: ${fileData.byteLength} bytes`);
               } else {
-                console.warn(`Screenshot file not found: ${fullPath}`);
+                console.warn(`[DEBUG] Screenshot file not found: ${fullPath}`);
               }
             } catch (error) {
-              console.error(`Failed to attach screenshot ${screenshotFile}:`, error);
+              console.error(`[DEBUG] Failed to attach screenshot ${screenshotFile}:`, error);
             }
           }
         }
         
         if (files.length > 0) {
+          console.log(`[DEBUG] Attaching ${files.length} files to completion message`);
           messageContent.files = files;
         }
       }
     }
     if ((isCompletion || isFailure) && state.messageId) {
       try {
+        console.log(`[DEBUG] Editing existing message ${state.messageId} with ${isCompletion ? 'completion' : 'failure'} status`);
         await sender.editMessage(state.messageId, messageContent);
       } catch (error) {
         console.error("Failed to edit message:", error instanceof Error ? error.message : String(error));
+        console.log(`[DEBUG] Edit failed, falling back to new message`);
         // Fallback to sending new if edit fails
         await sender.sendMessage(messageContent);
       }
     } else {
       // Send as a NEW message (triggers Discord notification)
+      console.log(`[DEBUG] Sending new system message (no existing message to edit)`);
       await sender.sendMessage(messageContent);
     }
   }
 
-  return { sendClaudeMessages, resetProgress };
+  // Log summary function for debugging
+  function logSummary(): void {
+    console.log(`[DEBUG] === Session Summary ===`);
+    console.log(`[DEBUG] Progress lines: ${state.lines.length} visible, ${state.fullProgressLog.length} total`);
+    console.log(`[DEBUG] Text messages: ${state.fullTextMessages.length}, total chars: ${state.fullTextMessages.reduce((s, t) => s + t.length, 0)}`);
+    console.log(`[DEBUG] Screenshots: ${state.screenshotFiles.length}`);
+    console.log(`[DEBUG] Was truncated: ${state.wasTruncated}, lines trimmed: ${state.trimmedCount}`);
+    console.log(`[DEBUG] Message ID: ${state.messageId || 'none'}`);
+    console.log(`[DEBUG] ========================`);
+  }
+
+  return { sendClaudeMessages, resetProgress, logSummary };
 }
