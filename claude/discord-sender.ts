@@ -102,8 +102,8 @@ function messageToSummaryLine(msg: ClaudeMessage): string | null {
     case "text": {
       const text = msg.content.trim();
       if (!text) return null;
-      // Show first 1000 chars of assistant text
-      const preview = text.length > 1000 ? text.substring(0, 1000) + "..." : text;
+      // Show more of assistant text - up to 1800 chars to fit within MAX_DESCRIPTION_LENGTH
+      const preview = text.length > 1800 ? text.substring(0, 1800) + "..." : text;
       return `\\> ${preview}`;
     }
 
